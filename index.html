@@ -685,6 +685,48 @@ select.range-select{
 }
 .telemetry-body .detail-title{display:none;} /* title is in head */
 
+
+/* NWS / SWDI weather layers */
+.wx-filters{display:flex; flex-direction:column; gap:8px;}
+.wx-filters .tf-label{
+  display:block;
+  font-family:var(--font-display);
+  font-size:9px; letter-spacing:0.8px;
+  text-transform:uppercase; color:var(--text-dim);
+  margin-bottom:4px;
+}
+.wx-layer-toggles{display:flex; flex-direction:column; gap:4px;}
+.wx-layer-toggles label{
+  display:flex; align-items:center; gap:8px;
+  font-size:12px; color:var(--text-mid);
+  padding:5px 6px; border-radius:5px; cursor:pointer;
+}
+.wx-layer-toggles label:hover{background:var(--bg-panel-raised); color:var(--text-hi);}
+.wx-layer-toggles input{accent-color:var(--cyan);}
+.wx-mini-stats{
+  font-family:var(--font-display);
+  font-size:10px; color:var(--text-dim);
+  letter-spacing:0.4px;
+}
+.wx-mini-stats b{color:var(--cyan);}
+.nws-legend-row{display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;}
+.nws-legend-row span{
+  font-size:9.5px; font-family:var(--font-display);
+  padding:2px 7px; border-radius:10px;
+  border:1px solid var(--line-bright); color:var(--text-mid);
+}
+.meta-kv{display:flex; justify-content:space-between; gap:10px;
+  padding:6px 0; border-bottom:1px solid var(--line); font-size:11.5px;}
+.meta-kv .k{color:var(--text-dim); font-family:var(--font-display);
+  font-size:10px; text-transform:uppercase; flex-shrink:0;}
+.meta-kv .v{color:var(--text-hi); text-align:right;}
+.meta-block{font-size:12px; color:var(--text-mid); line-height:1.55; margin:8px 0;}
+.meta-tag{
+  display:inline-block; font-family:var(--font-display); font-size:9.5px;
+  padding:3px 8px; border-radius:10px; text-transform:uppercase;
+  letter-spacing:0.5px; margin:0 5px 8px 0;
+}
+
 .irwin-panel{
   margin-top:14px;
   border:1px solid var(--line);
@@ -1111,6 +1153,48 @@ footer a{color:var(--text-dim);}
         </div>
 
         <div class="filter-group">
+          <h3>Weather layers</h3>
+          <div class="wx-filters">
+            <div class="wx-layer-toggles">
+              <label><input type="checkbox" id="layer-eonet" checked /> EONET natural events</label>
+              <label><input type="checkbox" id="layer-nws" /> NWS active alerts</label>
+              <label><input type="checkbox" id="layer-swdi" /> NCEI SWDI (on demand)</label>
+            </div>
+            <div class="wx-mini-stats">
+              NWS <b id="nws-count">—</b> · SWDI <b id="swdi-count">—</b>
+            </div>
+            <div>
+              <label class="tf-label">NWS severity</label>
+              <div class="seg" id="nws-sev-seg">
+                <button type="button" data-sev="all" class="active">All</button>
+                <button type="button" data-sev="Severe">Sev+</button>
+                <button type="button" data-sev="Extreme">Ext</button>
+              </div>
+            </div>
+            <div>
+              <label class="tf-label">NWS event contains</label>
+              <input class="search-box" id="nws-search" placeholder="e.g. Tornado, Flood, Heat…" />
+            </div>
+            <div>
+              <label class="tf-label">SWDI dataset</label>
+              <select class="range-select" id="swdi-dataset">
+                <option value="nx3structure">Storm structure (NEXRAD)</option>
+                <option value="nx3hail" selected>Hail signatures</option>
+                <option value="nx3meso">Mesocyclone</option>
+                <option value="nx3tvs">TVS (tornadic vortex)</option>
+                <option value="nldn">Lightning (NLDN)</option>
+              </select>
+            </div>
+            <div>
+              <label class="tf-label">SWDI date (UTC day)</label>
+              <input type="date" id="swdi-date" class="range-select" style="width:100%;" />
+            </div>
+            <button class="btn" id="swdi-load-btn" style="width:100%;">Load SWDI in map view</button>
+            <p class="hint">NWS: free api.weather.gov GeoJSON alerts. SWDI: queries current map bounds for the selected day (keep zoomed in).</p>
+          </div>
+        </div>
+
+        <div class="filter-group">
           <h3>Telemetry <button type="button" id="telem-reset">reset</button></h3>
           <div class="telem-filters">
             <div>
@@ -1247,7 +1331,7 @@ footer a{color:var(--text-dim);}
   </div>
 
   <footer>
-    <span>DATA: NASA EONET API v3 · eonet.gsfc.nasa.gov &nbsp;·&nbsp; BASEMAP: © Esri &nbsp;·&nbsp; IMAGERY: NASA GIBS</span>
+    <span>DATA: NASA EONET API v3 · eonet.gsfc.nasa.gov &nbsp;·&nbsp; BASEMAP: © Esri &nbsp;·&nbsp; IMAGERY: NASA GIBS &nbsp;·&nbsp; ALERTS: NWS api.weather.gov &nbsp;·&nbsp; SWDI: NCEI</span>
     <span id="last-updated">—</span>
   </footer>
 
@@ -1334,6 +1418,19 @@ let state = {
   streamArrivals: [], // {id, title, category, at, color}
   lastPollAt: null,
   pollInFlight: false,
+  layers: { eonet: true, nws: false, swdi: false },
+  nws: {
+    features: [],
+    severity: 'all', // all | Severe | Extreme
+    search: '',
+    loading: false,
+  },
+  swdi: {
+    records: [],
+    dataset: 'nx3hail',
+    date: null,
+    loading: false,
+  },
 };
 
 const DEFAULT_CENTER = [20, 10];
@@ -1381,6 +1478,8 @@ map.attributionControl.setPrefix('');
 let baseTileLayer = null;
 let imageryTileLayer = null;
 const markerLayer = L.layerGroup().addTo(map);
+const nwsLayer = L.layerGroup();
+const swdiLayer = L.layerGroup();
 
 function setBasemap(key){
   const def = BASEMAPS[key] || BASEMAPS.streets;
@@ -2670,8 +2769,317 @@ document.getElementById('imagery-opacity').addEventListener('input', e=>{
 });
 
 /* ---------- boot ---------- */
+
+/* =========================================================
+   NWS alerts (api.weather.gov) + NCEI SWDI
+   ========================================================= */
+const NWS_UA = 'EONETXPLR/1.0 (open dashboard; local use)';
+const NWS_ALERTS = 'https://api.weather.gov/alerts/active';
+const SWDI_BASE = 'https://www.ncei.noaa.gov/swdiws/json';
+
+const NWS_SEV_COLOR = {
+  Extreme: '#ff4d5e',
+  Severe: '#ff8a3d',
+  Moderate: '#f0c929',
+  Minor: '#4fd1c5',
+  Unknown: '#8b96ab',
+};
+
+function nwsColor(sev){ return NWS_SEV_COLOR[sev] || NWS_SEV_COLOR.Unknown; }
+
+function polygonCentroid(geom){
+  if(!geom) return null;
+  if(geom.type === 'Point') return [geom.coordinates[1], geom.coordinates[0]];
+  let coords = [];
+  if(geom.type === 'Polygon') coords = geom.coordinates[0] || [];
+  else if(geom.type === 'MultiPolygon') coords = (geom.coordinates[0] || [])[0] || [];
+  else return null;
+  if(!coords.length) return null;
+  let lat=0, lon=0, n=0;
+  coords.forEach(c=>{ lon+=c[0]; lat+=c[1]; n++; });
+  return [lat/n, lon/n];
+}
+
+function matchesNwsFilters(props){
+  const sev = state.nws.severity;
+  if(sev === 'Extreme' && props.severity !== 'Extreme') return false;
+  if(sev === 'Severe' && !['Severe','Extreme'].includes(props.severity)) return false;
+  const q = (state.nws.search || '').trim().toLowerCase();
+  if(q){
+    const blob = `${props.event||''} ${props.headline||''} ${props.areaDesc||''}`.toLowerCase();
+    if(!blob.includes(q)) return false;
+  }
+  return true;
+}
+
+async function loadNwsAlerts(){
+  state.nws.loading = true;
+  updateWxCounts();
+  try{
+    const res = await fetch(NWS_ALERTS, {
+      headers: { 'Accept': 'application/geo+json', 'User-Agent': NWS_UA },
+      cache: 'no-cache',
+    });
+    if(!res.ok) throw new Error('NWS HTTP ' + res.status);
+    const data = await res.json();
+    state.nws.features = data.features || [];
+    renderNwsLayer();
+  }catch(err){
+    console.error('NWS load failed', err);
+    showToast('NWS alerts unavailable: ' + err.message);
+  }finally{
+    state.nws.loading = false;
+    updateWxCounts();
+  }
+}
+
+function renderNwsLayer(){
+  nwsLayer.clearLayers();
+  if(!state.layers.nws){
+    if(map.hasLayer(nwsLayer)) map.removeLayer(nwsLayer);
+    updateWxCounts();
+    return;
+  }
+  if(!map.hasLayer(nwsLayer)) nwsLayer.addTo(map);
+
+  const filtered = state.nws.features.filter(f => matchesNwsFilters(f.properties || {}));
+  filtered.forEach(f=>{
+    const props = f.properties || {};
+    const color = nwsColor(props.severity);
+    const geom = f.geometry;
+    const layerOpts = {
+      color, weight: 1.5, opacity: 0.85,
+      fillColor: color, fillOpacity: 0.12,
+    };
+    let layer = null;
+    if(geom && (geom.type === 'Polygon' || geom.type === 'MultiPolygon')){
+      layer = L.geoJSON(f, { style: ()=> layerOpts });
+    }else{
+      const c = polygonCentroid(geom);
+      if(!c) return;
+      layer = L.circleMarker(c, {
+        radius: 6, color, weight: 1.5,
+        fillColor: color, fillOpacity: 0.65,
+      });
+    }
+    layer.on('click', ()=> openNwsModal(props, geom));
+    layer.bindTooltip(props.event || 'NWS alert', { sticky: true, opacity: 0.9 });
+    layer.addTo(nwsLayer);
+  });
+  updateWxCounts();
+}
+
+function openNwsModal(props, geom){
+  const color = nwsColor(props.severity);
+  const c = polygonCentroid(geom);
+  document.getElementById('telemetry-title').textContent = props.event || 'NWS Alert';
+  document.getElementById('telemetry-sub').textContent =
+    `${props.severity || '—'} · ${props.urgency || '—'} · ${props.certainty || '—'}`;
+  const params = props.parameters || {};
+  const paramRows = Object.keys(params).slice(0, 12).map(k=>{
+    const val = Array.isArray(params[k]) ? params[k].join(', ') : params[k];
+    return `<div class="meta-kv"><span class="k">${k}</span><span class="v">${val}</span></div>`;
+  }).join('');
+
+  document.getElementById('telemetry-body').innerHTML = `
+    <span class="meta-tag" style="background:${color}33;color:${color}">${props.severity || 'Unknown'}</span>
+    <span class="meta-tag" style="background:var(--cyan-dim);color:var(--cyan)">${props.msgType || props.status || 'alert'}</span>
+    ${props.headline ? `<div class="meta-block"><b>${props.headline}</b></div>` : ''}
+    <div class="meta-kv"><span class="k">Area</span><span class="v">${props.areaDesc || '—'}</span></div>
+    <div class="meta-kv"><span class="k">Sender</span><span class="v">${props.senderName || '—'}</span></div>
+    <div class="meta-kv"><span class="k">Onset</span><span class="v">${props.onset ? new Date(props.onset).toLocaleString() : '—'}</span></div>
+    <div class="meta-kv"><span class="k">Expires</span><span class="v">${props.expires ? new Date(props.expires).toLocaleString() : '—'}</span></div>
+    <div class="meta-kv"><span class="k">Ends</span><span class="v">${props.ends ? new Date(props.ends).toLocaleString() : '—'}</span></div>
+    <div class="meta-kv"><span class="k">Sent</span><span class="v">${props.sent ? new Date(props.sent).toLocaleString() : '—'}</span></div>
+    <div class="meta-kv"><span class="k">Centroid</span><span class="v">${c ? c[0].toFixed(3)+', '+c[1].toFixed(3) : '—'}</span></div>
+    <div class="meta-kv"><span class="k">ID</span><span class="v" style="font-size:10px;word-break:break-all">${props.id || '—'}</span></div>
+    ${props.description ? `<div class="meta-block" style="margin-top:10px;white-space:pre-wrap">${props.description.slice(0,1800)}${props.description.length>1800?'…':''}</div>` : ''}
+    ${props.instruction ? `<div class="meta-block"><b>Instructions</b><br>${props.instruction.slice(0,800)}</div>` : ''}
+    ${paramRows ? `<div style="margin-top:12px"><div class="meta-kv"><span class="k">Parameters</span><span class="v"></span></div>${paramRows}</div>` : ''}
+    <div class="detail-links">
+      <a href="https://www.weather.gov/" target="_blank" rel="noopener">↗ National Weather Service</a>
+    </div>
+  `;
+  document.getElementById('telemetry-backdrop').classList.add('open');
+  document.getElementById('telemetry-backdrop').setAttribute('aria-hidden','false');
+  if(c) map.flyTo(c, Math.max(map.getZoom(), 6), {duration:0.5});
+}
+
+function parseSwdiPoint(shape){
+  // "POINT (-97.76 38.44)"
+  if(!shape || typeof shape !== 'string') return null;
+  const m = shape.match(/POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+  if(!m) return null;
+  return [parseFloat(m[2]), parseFloat(m[1])]; // lat, lon
+}
+
+function swdiDateStr(dateInput){
+  // YYYY-MM-DD -> yyyymmdd
+  if(!dateInput) return null;
+  return dateInput.replace(/-/g, '');
+}
+
+async function loadSwdiForMapView(){
+  if(state.swdi.loading) return;
+  const ds = document.getElementById('swdi-dataset').value;
+  const day = document.getElementById('swdi-date').value;
+  const ymd = swdiDateStr(day);
+  if(!ymd){
+    showToast('Pick a SWDI date first');
+    return;
+  }
+  const b = map.getBounds();
+  // Require reasonably zoomed view to avoid multi-MB payloads
+  if(map.getZoom() < 5){
+    showToast('Zoom in closer before loading SWDI (zoom ≥ 5)');
+    return;
+  }
+  const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(x=>x.toFixed(4)).join(',');
+  // hour range full day
+  const start = ymd + '00';
+  const end = ymd + '23';
+  const url = `${SWDI_BASE}/${ds}/${start}:${end}?bbox=${bbox}`;
+
+  state.swdi.loading = true;
+  state.swdi.dataset = ds;
+  updateWxCounts();
+  showToast('Loading SWDI…');
+  try{
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if(!res.ok) throw new Error('SWDI HTTP ' + res.status);
+    const data = await res.json();
+    let rows = data.result || [];
+    // Cap client-side for map performance
+    if(rows.length > 1500) rows = rows.slice(0, 1500);
+    state.swdi.records = rows;
+    state.layers.swdi = true;
+    document.getElementById('layer-swdi').checked = true;
+    if(!map.hasLayer(swdiLayer)) swdiLayer.addTo(map);
+    renderSwdiLayer();
+    showToast(`SWDI: ${rows.length} records in view`);
+  }catch(err){
+    console.error(err);
+    showToast('SWDI failed: ' + err.message);
+  }finally{
+    state.swdi.loading = false;
+    updateWxCounts();
+  }
+}
+
+function renderSwdiLayer(){
+  swdiLayer.clearLayers();
+  if(!state.layers.swdi){
+    if(map.hasLayer(swdiLayer)) map.removeLayer(swdiLayer);
+    updateWxCounts();
+    return;
+  }
+  if(!map.hasLayer(swdiLayer)) swdiLayer.addTo(map);
+
+  state.swdi.records.forEach(rec=>{
+    const ll = parseSwdiPoint(rec.SHAPE);
+    if(!ll || isNaN(ll[0]) || isNaN(ll[1])) return;
+    const m = L.circleMarker(ll, {
+      radius: 4,
+      color: '#b085f5',
+      weight: 1,
+      fillColor: '#b085f5',
+      fillOpacity: 0.7,
+    });
+    m.on('click', ()=> openSwdiModal(rec));
+    m.addTo(swdiLayer);
+  });
+  updateWxCounts();
+}
+
+function openSwdiModal(rec){
+  const ll = parseSwdiPoint(rec.SHAPE);
+  document.getElementById('telemetry-title').textContent = 'SWDI · ' + (state.swdi.dataset || 'record');
+  document.getElementById('telemetry-sub').textContent = rec.ZTIME || rec.ztime || 'NCEI Severe Weather Data Inventory';
+  const rows = Object.keys(rec).sort().map(k=>{
+    if(k === 'SHAPE') return `<div class="meta-kv"><span class="k">${k}</span><span class="v">${rec[k]}</span></div>`;
+    return `<div class="meta-kv"><span class="k">${k}</span><span class="v">${rec[k]}</span></div>`;
+  }).join('');
+  document.getElementById('telemetry-body').innerHTML = `
+    <span class="meta-tag" style="background:#b085f533;color:#b085f5">SWDI</span>
+    <span class="meta-tag" style="background:var(--cyan-dim);color:var(--cyan)">${state.swdi.dataset}</span>
+    <div class="meta-block">Public NCEI spatial inventory (radar attributes / lightning). Values are as returned by the SWDI JSON service.</div>
+    ${rows}
+    <div class="detail-links">
+      <a href="https://www.ncei.noaa.gov/products/severe-weather-data-inventory" target="_blank" rel="noopener">↗ NCEI SWDI product page</a>
+    </div>
+  `;
+  document.getElementById('telemetry-backdrop').classList.add('open');
+  document.getElementById('telemetry-backdrop').setAttribute('aria-hidden','false');
+  if(ll) map.flyTo(ll, Math.max(map.getZoom(), 7), {duration:0.45});
+}
+
+function updateWxCounts(){
+  const nwsEl = document.getElementById('nws-count');
+  const swdiEl = document.getElementById('swdi-count');
+  if(nwsEl){
+    if(state.nws.loading) nwsEl.textContent = '…';
+    else{
+      const n = state.nws.features.filter(f => matchesNwsFilters(f.properties||{})).length;
+      nwsEl.textContent = state.layers.nws ? `${n}/${state.nws.features.length}` : String(state.nws.features.length || 0);
+    }
+  }
+  if(swdiEl){
+    swdiEl.textContent = state.swdi.loading ? '…' : String(state.swdi.records.length || 0);
+  }
+}
+
+function setEonetLayerVisible(on){
+  state.layers.eonet = on;
+  if(on){
+    if(!map.hasLayer(markerLayer)) markerLayer.addTo(map);
+  }else if(map.hasLayer(markerLayer)){
+    map.removeLayer(markerLayer);
+  }
+}
+
+function wireWeatherControls(){
+  // default SWDI date = yesterday UTC
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  const iso = d.toISOString().slice(0,10);
+  const dateInput = document.getElementById('swdi-date');
+  if(dateInput && !dateInput.value) dateInput.value = iso;
+  state.swdi.date = iso;
+
+  document.getElementById('layer-eonet').addEventListener('change', e=>{
+    setEonetLayerVisible(e.target.checked);
+  });
+  document.getElementById('layer-nws').addEventListener('change', e=>{
+    state.layers.nws = e.target.checked;
+    if(state.layers.nws && state.nws.features.length === 0) loadNwsAlerts();
+    else renderNwsLayer();
+  });
+  document.getElementById('layer-swdi').addEventListener('change', e=>{
+    state.layers.swdi = e.target.checked;
+    renderSwdiLayer();
+  });
+  document.getElementById('nws-sev-seg').addEventListener('click', e=>{
+    const btn = e.target.closest('button[data-sev]');
+    if(!btn) return;
+    document.querySelectorAll('#nws-sev-seg button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.nws.severity = btn.dataset.sev;
+    renderNwsLayer();
+  });
+  document.getElementById('nws-search').addEventListener('input', e=>{
+    state.nws.search = e.target.value;
+    renderNwsLayer();
+  });
+  document.getElementById('swdi-load-btn').addEventListener('click', loadSwdiForMapView);
+  document.getElementById('swdi-dataset').addEventListener('change', e=>{
+    state.swdi.dataset = e.target.value;
+  });
+}
+
+
 async function init(){
   setApiStatus('loading','Connecting');
+  wireWeatherControls();
   try{
     // Categories + sources first (needed for filters), then events
     await Promise.all([loadCategories(), loadSources()]);
