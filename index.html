@@ -11,7 +11,7 @@
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
 <style>
 :root{
@@ -179,6 +179,8 @@ header{
   transition:.15s;
 }
 .icon-btn:hover{color:var(--amber); border-color:var(--amber);}
+.icon-btn.muted{color:var(--text-dim); border-color:var(--line);}
+.icon-btn.spinning{animation:spin 0.6s linear;}
 
 /* ===== MAIN GRID ===== */
 #main{
@@ -476,6 +478,54 @@ select.range-select{
 .popup-cat{font-size:10px; color:var(--text-mid); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;}
 .popup-link{font-size:11px; color:var(--cyan); text-decoration:none;}
 
+/* dark-themed Leaflet map controls (zoom + reset view) */
+.leaflet-bar{
+  border:1px solid var(--line-bright) !important;
+  border-radius:8px !important;
+  overflow:hidden;
+  box-shadow:0 2px 10px rgba(0,0,0,0.5) !important;
+}
+.leaflet-bar a{
+  background:rgba(11,15,22,0.94) !important;
+  color:var(--text-mid) !important;
+  border-bottom:1px solid var(--line) !important;
+  width:30px !important; height:30px !important;
+  line-height:30px !important;
+  font-size:15px !important;
+  backdrop-filter:blur(6px);
+  transition:.15s;
+}
+.leaflet-bar a:last-child{border-bottom:none !important;}
+.leaflet-bar a:hover{background:var(--amber-dim) !important; color:var(--amber) !important;}
+.leaflet-control-attribution{
+  background:rgba(11,15,22,0.75) !important;
+  color:var(--text-dim) !important;
+  font-family:var(--font-display);
+  font-size:9px !important;
+}
+.leaflet-control-attribution a{color:var(--text-mid) !important;}
+
+/* toast for new-event alerts */
+#toast-stack{
+  position:absolute; top:60px; left:50%; transform:translateX(-50%);
+  z-index:900; display:flex; flex-direction:column; gap:6px; align-items:center;
+  pointer-events:none;
+}
+.toast{
+  background:rgba(11,15,22,0.96);
+  border:1px solid var(--amber);
+  color:var(--text-hi);
+  font-family:var(--font-display);
+  font-size:11px;
+  letter-spacing:0.4px;
+  padding:8px 16px;
+  border-radius:20px;
+  box-shadow:0 0 16px 0 var(--amber-dim);
+  animation:toast-in 0.3s ease, toast-out 0.4s ease 3.6s forwards;
+}
+@keyframes toast-in{from{opacity:0; transform:translateY(-8px);} to{opacity:1; transform:translateY(0);}}
+@keyframes toast-out{to{opacity:0; transform:translateY(-8px);}}
+
 /* pulsing event marker */
 .evt-marker{
   border-radius:50%;
@@ -616,6 +666,14 @@ footer a{color:var(--text-dim);}
     </div>
 
     <div class="header-right">
+      <select class="range-select" id="autorefresh-select" style="width:auto; padding:5px 8px; font-size:10.5px;" title="Auto-refresh interval">
+        <option value="0">Auto-refresh: Off</option>
+        <option value="1">Every 1 min</option>
+        <option value="2">Every 2 min</option>
+        <option value="5" selected>Every 5 min</option>
+        <option value="10">Every 10 min</option>
+      </select>
+      <button class="icon-btn" id="alert-toggle-btn" title="Toggle audio alerts for new events">🔔</button>
       <div id="clock">— <b>—</b></div>
       <div class="status-pill loading" id="api-status"><span class="led"></span><span id="api-status-text">Connecting</span></div>
       <button class="icon-btn" id="refresh-btn" title="Refresh data">⟳</button>
@@ -677,6 +735,7 @@ footer a{color:var(--text-dim);}
     <!-- CENTER: MAP -->
     <div id="map-wrap">
       <div id="map"></div>
+      <div id="toast-stack"></div>
       <div class="map-overlay-top">
         <div class="chip">STATUS: <b id="chip-status">OPEN</b></div>
         <div class="chip">WINDOW: <b id="chip-days">60D</b></div>
@@ -736,7 +795,7 @@ footer a{color:var(--text-dim);}
   </div>
 
   <footer>
-    <span>DATA: NASA EONET API v3 · eonet.gsfc.nasa.gov</span>
+    <span>DATA: NASA EONET API v3 · eonet.gsfc.nasa.gov &nbsp;·&nbsp; BASEMAP: © OpenStreetMap © CARTO &nbsp;·&nbsp; IMAGERY: NASA GIBS</span>
     <span id="last-updated">—</span>
   </footer>
 
@@ -791,24 +850,81 @@ let state = {
   selectedEventId: null,
   markers: {},
   imagery: { enabled:false, layerId: GIBS_LAYERS[0].id, date: null, opacity: 0.7 },
+  knownEventIds: new Set(),
+  isFirstLoad: true,
+  audioAlertsEnabled: true,
+  autoRefreshMinutes: 5,
+  autoRefreshTimer: null,
 };
+
+const DEFAULT_CENTER = [20, 10];
+const DEFAULT_ZOOM = 2.4;
 
 const map = L.map('map', {
   worldCopyJump: true,
   zoomControl: false,
+  attributionControl: false,
   minZoom: 2,
-}).setView([20, 10], 2.4);
-
-L.control.zoom({position:'bottomright'}).addTo(map);
+}).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_matter/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; OpenStreetMap &copy; CARTO',
   subdomains: 'abcd',
-  maxZoom: 19
+  maxZoom: 19,
+  errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 }).addTo(map);
+
+// Reset-view control, styled and stacked with the zoom control (bottom-right,
+// the one corner not already occupied by chips, legend, or the imagery panel)
+const ResetViewControl = L.Control.extend({
+  options:{ position:'bottomright' },
+  onAdd: function(mapInstance){
+    const div = L.DomUtil.create('div', 'leaflet-bar');
+    div.innerHTML = '<a href="#" role="button" title="Reset map view" style="font-size:16px;">⌂</a>';
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.on(div, 'click', (e)=>{
+      e.preventDefault();
+      mapInstance.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, {duration:0.7});
+    });
+    return div;
+  }
+});
+map.addControl(new ResetViewControl());
+L.control.zoom({position:'bottomright'}).addTo(map);
 
 const markerLayer = L.layerGroup().addTo(map);
 let imageryTileLayer = null;
+
+/* ---------- toast notifications ---------- */
+function showToast(message){
+  const stack = document.getElementById('toast-stack');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = message;
+  stack.appendChild(el);
+  setTimeout(()=> el.remove(), 4000);
+}
+
+/* ---------- audio alerts ---------- */
+let audioCtx = null;
+function playAlertTone(){
+  if(!state.audioAlertsEnabled) return;
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+    [0, 0.16].forEach((offset, i)=>{
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(i===0 ? 880 : 1180, now + offset);
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.15);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.16);
+    });
+  }catch(e){ console.warn('Audio alert unavailable:', e); }
+}
 
 /* ---------- imagery (NASA GIBS) controls ---------- */
 function yesterdayUTC(){
@@ -902,6 +1018,22 @@ async function loadEvents(){
     setApiStatus('ok','Live');
     document.getElementById('last-updated').textContent =
       'LAST SYNC: ' + new Date().toLocaleTimeString();
+
+    // detect newly-appeared events relative to the previous fetch
+    const currentIds = new Set(state.events.map(e=>e.id));
+    if(!state.isFirstLoad){
+      const newOnes = state.events.filter(ev => !state.knownEventIds.has(ev.id));
+      if(newOnes.length > 0){
+        const label = newOnes.length === 1
+          ? `⚠ New event: ${newOnes[0].title}`
+          : `⚠ ${newOnes.length} new events detected`;
+        showToast(label);
+        playAlertTone();
+      }
+    }
+    state.knownEventIds = currentIds;
+    state.isFirstLoad = false;
+
     applyFilters();
     renderCategoryCounts();
   }catch(err){
@@ -1284,7 +1416,37 @@ document.getElementById('src-toggle-all').addEventListener('click', ()=>{
 });
 
 document.getElementById('apply-btn').addEventListener('click', loadEvents);
-document.getElementById('refresh-btn').addEventListener('click', loadEvents);
+document.getElementById('refresh-btn').addEventListener('click', ()=>{
+  document.getElementById('refresh-btn').classList.add('spinning');
+  loadEvents().finally(()=> document.getElementById('refresh-btn').classList.remove('spinning'));
+});
+
+/* ---------- auto-refresh ---------- */
+function setAutoRefresh(minutes){
+  state.autoRefreshMinutes = minutes;
+  if(state.autoRefreshTimer){ clearInterval(state.autoRefreshTimer); state.autoRefreshTimer = null; }
+  if(minutes > 0){
+    state.autoRefreshTimer = setInterval(loadEvents, minutes * 60000);
+  }
+}
+document.getElementById('autorefresh-select').addEventListener('change', e=>{
+  setAutoRefresh(parseInt(e.target.value, 10));
+});
+setAutoRefresh(state.autoRefreshMinutes);
+
+/* ---------- audio alert toggle ---------- */
+function refreshAlertButton(){
+  const btn = document.getElementById('alert-toggle-btn');
+  btn.classList.toggle('muted', !state.audioAlertsEnabled);
+  btn.textContent = state.audioAlertsEnabled ? '🔔' : '🔕';
+  btn.title = state.audioAlertsEnabled ? 'Audio alerts: on — click to mute' : 'Audio alerts: muted — click to unmute';
+}
+document.getElementById('alert-toggle-btn').addEventListener('click', ()=>{
+  state.audioAlertsEnabled = !state.audioAlertsEnabled;
+  refreshAlertButton();
+  if(state.audioAlertsEnabled) playAlertTone(); // quick confirmation chirp
+});
+refreshAlertButton();
 
 /* ---------- imagery panel wiring ---------- */
 populateImageryLayerSelect();
