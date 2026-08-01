@@ -705,24 +705,45 @@ select.range-select{
   font-size:10.5px;
 }
 .irwin-panel .ih a:hover{text-decoration:underline;}
+.irwin-sections{max-height:340px; overflow-y:auto;}
+.irwin-section{border-bottom:1px solid var(--line);}
+.irwin-section:last-child{border-bottom:none;}
+.irwin-section .sh{
+  font-family:var(--font-display);
+  font-size:9.5px; letter-spacing:1px; text-transform:uppercase;
+  color:var(--amber);
+  padding:7px 10px 5px;
+  background:rgba(255,138,61,0.06);
+  border-bottom:1px solid var(--line);
+  position:sticky; top:0;
+  backdrop-filter:blur(4px);
+}
 .irwin-grid{
   display:grid;
   grid-template-columns:1fr 1fr;
   gap:0;
 }
 .irwin-grid .cell{
-  padding:8px 10px;
+  padding:7px 10px;
   border-bottom:1px solid var(--line);
   border-right:1px solid var(--line);
   font-size:11.5px;
 }
 .irwin-grid .cell:nth-child(2n){border-right:none;}
+.irwin-grid .cell.span2{grid-column:1 / -1; border-right:none;}
 .irwin-grid .cell .k{
   font-family:var(--font-display);
   font-size:9px; letter-spacing:0.6px; text-transform:uppercase;
   color:var(--text-dim); margin-bottom:2px;
 }
 .irwin-grid .cell .v{color:var(--text-hi); word-break:break-word;}
+.irwin-meta{
+  font-family:var(--font-display);
+  font-size:9px; letter-spacing:0.4px;
+  color:var(--text-dim);
+  padding:6px 10px;
+  border-top:1px solid var(--line);
+}
 .irwin-status{
   padding:10px;
   font-family:var(--font-display);
@@ -2089,45 +2110,168 @@ async function fetchIrwinObserverData(uniqueFireId){
 }
 
 function formatIrwinDate(ms){
-  if(ms == null || ms === '') return '—';
+  if(ms == null || ms === '') return null;
   const n = Number(ms);
   if(isNaN(n)) return String(ms);
   return new Date(n).toLocaleString();
 }
 
-function renderIrwinPanel(attrs, observerUrl){
-  const fields = [
-    ['Incident Name', attrs.IncidentName],
-    ['Unique Fire ID', attrs.UniqueFireIdentifier],
-    ['IRWIN ID', attrs.IrwinID],
-    ['Type', attrs.IncidentTypeCategory === 'WF' ? 'Wildfire' : (attrs.IncidentTypeCategory || attrs.IncidentTypeKind)],
-    ['Size (acres)', attrs.IncidentSize != null ? Number(attrs.IncidentSize).toLocaleString() : null],
-    ['% Contained', attrs.PercentContained != null ? attrs.PercentContained + '%' : null],
-    ['Discovery', formatIrwinDate(attrs.FireDiscoveryDateTime)],
-    ['Cause', attrs.FireCause],
-    ['Complexity', attrs.IncidentComplexityLevel],
-    ['Behavior', [attrs.FireBehaviorGeneral, attrs.FireBehaviorGeneral2, attrs.FireBehaviorGeneral3].filter(Boolean).join(' · ')],
-    ['Fuels', [attrs.PrimaryFuelModel, attrs.SecondaryFuelModel].filter(Boolean).join(' · ')],
-    ['County / State', [attrs.POOCounty, attrs.POOState].filter(Boolean).join(', ')],
-    ['Landowner', [attrs.POOLandownerCategory, attrs.POOLandownerKind].filter(Boolean).join(' · ')],
-    ['Protecting Unit', attrs.POOProtectingUnit],
-    ['GACC', attrs.GACC],
-    ['Personnel', attrs.TotalIncidentPersonnel],
-    ['Est. Cost', attrs.EstimatedCostToDate != null ? ('$' + Number(attrs.EstimatedCostToDate).toLocaleString()) : null],
-    ['Short description', attrs.IncidentShortDescription],
-  ].filter(([,v]) => v != null && v !== '');
+function formatIrwinNum(v, {suffix='', prefix='', digits}={}){
+  if(v == null || v === '') return null;
+  const n = Number(v);
+  if(isNaN(n)) return String(v);
+  const s = digits != null ? n.toLocaleString(undefined,{maximumFractionDigits:digits}) : n.toLocaleString();
+  return prefix + s + suffix;
+}
 
-  const cells = fields.map(([k,v])=>`
-    <div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>
-  `).join('');
+function formatIrwinJoin(parts, sep=' · '){
+  const list = (parts || []).filter(v => v != null && v !== '');
+  return list.length ? list.join(sep) : null;
+}
+
+function renderIrwinPanel(attrs, observerUrl){
+  const typeLabel = attrs.IncidentTypeCategory === 'WF'
+    ? 'Wildfire'
+    : (attrs.IncidentTypeCategory || attrs.IncidentTypeKind || null);
+
+  const groups = [
+    {
+      title: 'Identity',
+      rows: [
+        ['Incident Name', attrs.IncidentName, true],
+        ['Short description', attrs.IncidentShortDescription, true],
+        ['Unique Fire ID', attrs.UniqueFireIdentifier],
+        ['IRWIN ID', attrs.IrwinID],
+        ['Local ID', attrs.LocalIncidentIdentifier],
+        ['Type', typeLabel],
+        ['Fire Code', attrs.FireCode],
+        ['Dispatch Center', attrs.DispatchCenterID],
+      ],
+    },
+    {
+      title: 'Size & containment',
+      rows: [
+        ['Incident size', formatIrwinNum(attrs.IncidentSize, {suffix:' ac', digits:1})],
+        ['Discovery acres', formatIrwinNum(attrs.DiscoveryAcres, {suffix:' ac', digits:1})],
+        ['Final acres', formatIrwinNum(attrs.FinalAcres, {suffix:' ac', digits:1})],
+        ['Initial response acres', formatIrwinNum(attrs.InitialResponseAcres, {suffix:' ac', digits:1})],
+        ['% Contained', attrs.PercentContained != null ? attrs.PercentContained + '%' : null],
+        ['% Perimeter to contain', attrs.PercentPerimeterToBeContained != null ? attrs.PercentPerimeterToBeContained + '%' : null],
+        ['Containment time', formatIrwinDate(attrs.ContainmentDateTime)],
+      ],
+    },
+    {
+      title: 'Timeline',
+      rows: [
+        ['Discovery', formatIrwinDate(attrs.FireDiscoveryDateTime)],
+        ['Initial response', formatIrwinDate(attrs.InitialResponseDateTime)],
+        ['Controlled', formatIrwinDate(attrs.ControlDateTime)],
+        ['Fire out', formatIrwinDate(attrs.FireOutDateTime)],
+        ['ICS-209 report', formatIrwinDate(attrs.ICS209ReportDateTime)],
+        ['Record created', formatIrwinDate(attrs.CreatedOnDateTime_dt)],
+        ['Record modified', formatIrwinDate(attrs.ModifiedOnDateTime_dt)],
+        ['Active candidate', attrs.ActiveFireCandidate == 1 ? 'Yes' : (attrs.ActiveFireCandidate == 0 ? 'No' : null)],
+      ],
+    },
+    {
+      title: 'Cause & behavior',
+      rows: [
+        ['Cause', attrs.FireCause],
+        ['Cause (general)', attrs.FireCauseGeneral],
+        ['Cause (specific)', attrs.FireCauseSpecific, true],
+        ['Investigated', attrs.IsFireCauseInvestigated == 1 ? 'Yes' : (attrs.IsFireCauseInvestigated == 0 ? 'No' : null)],
+        ['Behavior', formatIrwinJoin([attrs.FireBehaviorGeneral, attrs.FireBehaviorGeneral1, attrs.FireBehaviorGeneral2, attrs.FireBehaviorGeneral3])],
+      ],
+    },
+    {
+      title: 'Fuels',
+      rows: [
+        ['Primary fuel model', attrs.PrimaryFuelModel],
+        ['Secondary fuel model', attrs.SecondaryFuelModel],
+        ['Predominant fuel group', attrs.PredominantFuelGroup],
+        ['Predominant fuel model', attrs.PredominantFuelModel],
+      ],
+    },
+    {
+      title: 'Strategy & complexity',
+      rows: [
+        ['Complexity', attrs.IncidentComplexityLevel || attrs.FireMgmtComplexity],
+        ['Management org', attrs.IncidentManagementOrganization],
+        ['Full suppression %', attrs.FireStrategyFullSuppPercent != null ? attrs.FireStrategyFullSuppPercent + '%' : null],
+        ['Confine %', attrs.FireStrategyConfinePercent != null ? attrs.FireStrategyConfinePercent + '%' : null],
+        ['Monitor %', attrs.FireStrategyMonitorPercent != null ? attrs.FireStrategyMonitorPercent + '%' : null],
+        ['Point/zone %', attrs.FireStrategyPointZonePercent != null ? attrs.FireStrategyPointZonePercent + '%' : null],
+        ['WFDSS status', attrs.WFDSSDecisionStatus],
+        ['Complex', formatIrwinJoin([attrs.CpxName, attrs.IsCpxChild == 1 ? 'child' : null])],
+      ],
+    },
+    {
+      title: 'Location (POO)',
+      rows: [
+        ['City / County / State', formatIrwinJoin([attrs.POOCity, attrs.POOCounty, attrs.POOState], ', ')],
+        ['FIPS', attrs.POOFips],
+        ['GACC', attrs.GACC],
+        ['Landowner', formatIrwinJoin([attrs.POOLandownerCategory, attrs.POOLandownerKind])],
+        ['Protecting unit', formatIrwinJoin([attrs.POOProtectingUnit, attrs.POOProtectingAgency])],
+        ['Jurisdictional unit', formatIrwinJoin([attrs.POOJurisdictionalUnit, attrs.POOJurisdictionalAgency])],
+        ['Predictive service area', attrs.POOPredictiveServiceAreaID],
+        ['Initial lat / lon', (attrs.InitialLatitude != null && attrs.InitialLongitude != null)
+          ? Number(attrs.InitialLatitude).toFixed(5) + ', ' + Number(attrs.InitialLongitude).toFixed(5)
+          : null],
+      ],
+    },
+    {
+      title: 'Cost, personnel & reporting',
+      rows: [
+        ['Personnel', attrs.TotalIncidentPersonnel],
+        ['Cost to date', formatIrwinNum(attrs.EstimatedCostToDate, {prefix:'$'})],
+        ['Est. final cost', formatIrwinNum(attrs.EstimatedFinalCost, {prefix:'$'})],
+        ['ICS-209 status', attrs.ICS209ReportStatus],
+        ['ICS-209 period', formatIrwinJoin([
+          formatIrwinDate(attrs.ICS209ReportForTimePeriodFrom),
+          formatIrwinDate(attrs.ICS209ReportForTimePeriodTo),
+        ], ' → ')],
+        ['Final report by', formatIrwinJoin([attrs.FinalFireReportApprovedByTitle, attrs.FinalFireReportApprovedByUnit])],
+        ['Final report date', formatIrwinDate(attrs.FinalFireReportApprovedDate)],
+      ],
+    },
+    {
+      title: 'System',
+      rows: [
+        ['Created by', attrs.CreatedBySystem],
+        ['Modified by', attrs.ModifiedBySystem],
+        ['Unified command', attrs.IsUnifiedCommand == 1 ? 'Yes' : (attrs.IsUnifiedCommand == 0 ? 'No' : null)],
+        ['Multi-jurisdictional', attrs.IsMultiJurisdictional == 1 ? 'Yes' : (attrs.IsMultiJurisdictional == 0 ? 'No' : null)],
+        ['FS assisted', attrs.IsFSAssisted == 1 ? 'Yes' : (attrs.IsFSAssisted == 0 ? 'No' : null)],
+        ['ADS permission', attrs.ADSPermissionState],
+      ],
+    },
+  ];
+
+  const sectionsHtml = groups.map(g=>{
+    const filled = g.rows
+      .map(([k,v,span]) => [k, v, !!span])
+      .filter(([,v]) => v != null && v !== '');
+    if(!filled.length) return '';
+    const cells = filled.map(([k,v,span])=>`
+      <div class="cell${span ? ' span2' : ''}"><div class="k">${k}</div><div class="v">${v}</div></div>
+    `).join('');
+    return `<div class="irwin-section">
+      <div class="sh">${g.title}</div>
+      <div class="irwin-grid">${cells}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  const filledCount = groups.reduce((n,g)=> n + g.rows.filter(([,v])=> v != null && v !== '').length, 0);
 
   return `
     <div class="irwin-panel" id="irwin-panel">
       <div class="ih">
-        <span>IRWIN Observer · WFIGS</span>
+        <span>IRWIN · WFIGS public data</span>
         ${observerUrl ? `<a href="${observerUrl}" target="_blank" rel="noopener">Open in IRWIN Observer ↗</a>` : ''}
       </div>
-      <div class="irwin-grid">${cells}</div>
+      <div class="irwin-sections">${sectionsHtml || '<div class="irwin-status">No populated WFIGS fields for this incident.</div>'}</div>
+      <div class="irwin-meta">${filledCount} fields shown · source NIFC WFIGS (no Observer login required)</div>
     </div>
   `;
 }
