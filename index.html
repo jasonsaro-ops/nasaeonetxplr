@@ -2042,7 +2042,7 @@ function buildTelemetryHTML(ev, {forModal=false}={}){
 
   const hasIrwin = !!(ev.sources || []).some(s => (s.id || '').toUpperCase() === 'IRWIN');
   const irwinBlock = hasIrwin
-    ? `<div id="irwin-slot"><div class="irwin-panel"><div class="irwin-status">Loading IRWIN Observer data…</div></div></div>`
+    ? `<div id="irwin-slot"><div class="irwin-panel"><div class="irwin-status">Loading WFIGS incident data…</div></div></div>`
     : `<div id="irwin-slot"></div>`;
 
   return `
@@ -2061,10 +2061,9 @@ function buildTelemetryHTML(ev, {forModal=false}={}){
     ${trackBlock}
     ${irwinBlock}
     <div class="detail-links">
-      ${(ev.sources||[]).map(s=>{
-        const label = s.id === 'IRWIN' ? 'IRWIN Observer' : s.id;
-        return `<a href="${s.url}" target="_blank" rel="noopener">↗ ${label} — Source Reference</a>`;
-      }).join('')}
+      ${(ev.sources||[]).filter(s => (s.id || '').toUpperCase() !== 'IRWIN').map(s=>
+        `<a href="${s.url}" target="_blank" rel="noopener">↗ ${s.id} — Source Reference</a>`
+      ).join('')}
       <a href="${ev.link}" target="_blank" rel="noopener">↗ Raw EONET Record (JSON)</a>
       ${g ? `<a href="${worldviewUrl(g, ev.geometry[0])}" target="_blank" rel="noopener">🛰 Open Coincident Imagery in NASA Worldview</a>` : ''}
     </div>
@@ -2084,7 +2083,7 @@ function irwinSourceUrl(ev){
   return src?.url || null;
 }
 
-/** WFIGS (NIFC) public FeatureServer — same IRWIN-backed incident attributes shown in IRWIN Observer. */
+/** WFIGS (NIFC) public FeatureServer — IRWIN-backed incident attributes from the public NIFC WFIGS service. */
 const WFIGS_CURRENT = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query';
 const WFIGS_ALL = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations/FeatureServer/0/query';
 
@@ -2268,7 +2267,6 @@ function renderIrwinPanel(attrs, observerUrl){
     <div class="irwin-panel" id="irwin-panel">
       <div class="ih">
         <span>IRWIN · WFIGS public data</span>
-        ${observerUrl ? `<a href="${observerUrl}" target="_blank" rel="noopener">Open in IRWIN Observer ↗</a>` : ''}
       </div>
       <div class="irwin-sections">${sectionsHtml || '<div class="irwin-status">No populated WFIGS fields for this incident.</div>'}</div>
       <div class="irwin-meta">${filledCount} fields shown · source NIFC WFIGS (no Observer login required)</div>
@@ -2293,15 +2291,13 @@ async function loadIrwinIntoModal(ev){
     setAll('');
     return;
   }
-  setAll(`<div class="irwin-panel"><div class="irwin-status">Loading IRWIN Observer data for ${fireId}…</div></div>`);
+  setAll(`<div class="irwin-panel"><div class="irwin-status">Loading WFIGS data for ${fireId}…</div></div>`);
   try{
     const feat = await fetchIrwinObserverData(fireId);
     if(!feat){
       setAll(`<div class="irwin-panel">
-        <div class="ih"><span>IRWIN Observer</span>
-          ${observerUrl ? `<a href="${observerUrl}" target="_blank" rel="noopener">Open in IRWIN Observer ↗</a>` : ''}
-        </div>
-        <div class="irwin-status">No WFIGS record found for <b>${fireId}</b>. The Observer page may still have detail.</div>
+        <div class="ih"><span>IRWIN · WFIGS public data</span></div>
+        <div class="irwin-status">No public WFIGS record found for <b>${fireId}</b>.</div>
       </div>`);
       return;
     }
