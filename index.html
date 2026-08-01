@@ -367,7 +367,10 @@ select.range-select{
 
 .map-overlay-top{
   position:absolute; top:12px; left:12px; z-index:400;
-  display:flex; gap:8px; flex-wrap:wrap; max-width:calc(100% - 24px);
+  display:flex; flex-direction:column; gap:8px; max-width:calc(100% - 24px);
+}
+.map-overlay-chips{
+  display:flex; gap:8px; flex-wrap:wrap;
 }
 .chip{
   font-family:var(--font-display);
@@ -381,6 +384,35 @@ select.range-select{
   display:flex; align-items:center; gap:6px;
 }
 .chip b{color:var(--text-hi);}
+
+/* basemap switcher */
+.basemap-switcher{
+  display:flex;
+  background:rgba(11,15,22,0.92);
+  border:1px solid var(--line-bright);
+  backdrop-filter:blur(6px);
+  border-radius:20px;
+  overflow:hidden;
+}
+.basemap-switcher button{
+  background:none;
+  border:none;
+  color:var(--text-mid);
+  font-family:var(--font-display);
+  font-size:10px;
+  letter-spacing:0.4px;
+  padding:6px 12px;
+  cursor:pointer;
+  transition:.15s;
+  border-right:1px solid var(--line-bright);
+  white-space:nowrap;
+}
+.basemap-switcher button:last-child{border-right:none;}
+.basemap-switcher button.active{
+  background:var(--amber-dim);
+  color:var(--amber);
+}
+.basemap-switcher button:hover:not(.active){color:var(--text-hi);}
 
 .legend-box{
   position:absolute; bottom:12px; left:12px; z-index:400;
@@ -737,9 +769,17 @@ footer a{color:var(--text-dim);}
       <div id="map"></div>
       <div id="toast-stack"></div>
       <div class="map-overlay-top">
-        <div class="chip">STATUS: <b id="chip-status">OPEN</b></div>
-        <div class="chip">WINDOW: <b id="chip-days">60D</b></div>
-        <div class="chip">EVENTS: <b id="chip-count">0</b></div>
+        <div class="map-overlay-chips">
+          <div class="chip">STATUS: <b id="chip-status">OPEN</b></div>
+          <div class="chip">WINDOW: <b id="chip-days">60D</b></div>
+          <div class="chip">EVENTS: <b id="chip-count">0</b></div>
+        </div>
+        <div class="basemap-switcher" id="basemap-switcher">
+          <button data-basemap="streets" class="active">Streets</button>
+          <button data-basemap="dark">Dark</button>
+          <button data-basemap="topo">Topo</button>
+          <button data-basemap="imagery">Satellite</button>
+        </div>
       </div>
       <div class="legend-box" id="legend-box">
         <div class="lh"><span>Category Key</span></div>
@@ -795,7 +835,7 @@ footer a{color:var(--text-dim);}
   </div>
 
   <footer>
-    <span>DATA: NASA EONET API v3 · eonet.gsfc.nasa.gov &nbsp;·&nbsp; BASEMAP: © OpenStreetMap © CARTO &nbsp;·&nbsp; IMAGERY: NASA GIBS</span>
+    <span>DATA: NASA EONET API v3 · eonet.gsfc.nasa.gov &nbsp;·&nbsp; BASEMAP: © Esri &nbsp;·&nbsp; IMAGERY: NASA GIBS</span>
     <span id="last-updated">—</span>
   </footer>
 
@@ -860,6 +900,31 @@ let state = {
 const DEFAULT_CENTER = [20, 10];
 const DEFAULT_ZOOM = 2.4;
 
+/* Esri ArcGIS Online tiles — not flagged by common ad/tracker blocklists
+   (unlike cartocdn.com). Provides a real zoomable world map by default. */
+const BASEMAPS = {
+  streets: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri',
+    maxZoom: 19,
+  },
+  dark: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri',
+    maxZoom: 16,
+  },
+  topo: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri',
+    maxZoom: 19,
+  },
+  imagery: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri',
+    maxZoom: 19,
+  },
+};
+
 const map = L.map('map', {
   worldCopyJump: true,
   zoomControl: false,
@@ -867,11 +932,24 @@ const map = L.map('map', {
   minZoom: 2,
 }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_matter/{z}/{x}/{y}{r}.png', {
-  subdomains: 'abcd',
-  maxZoom: 19,
-  errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
-}).addTo(map);
+let baseTileLayer = null;
+let imageryTileLayer = null;
+const markerLayer = L.layerGroup(); // created early; added after basemap
+
+function setBasemap(key){
+  const def = BASEMAPS[key] || BASEMAPS.streets;
+  if(baseTileLayer) map.removeLayer(baseTileLayer);
+  baseTileLayer = L.tileLayer(def.url, {
+    maxZoom: def.maxZoom,
+    attribution: def.attribution,
+    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+  }).addTo(map);
+  // Stack order: basemap (bottom) → GIBS imagery → event markers (top)
+  if(imageryTileLayer) imageryTileLayer.bringToFront();
+  if(markerLayer) markerLayer.bringToFront();
+}
+setBasemap('streets'); // default: real street map of the world
+markerLayer.addTo(map);
 
 // Reset-view control, styled and stacked with the zoom control (bottom-right,
 // the one corner not already occupied by chips, legend, or the imagery panel)
@@ -891,8 +969,14 @@ const ResetViewControl = L.Control.extend({
 map.addControl(new ResetViewControl());
 L.control.zoom({position:'bottomright'}).addTo(map);
 
-const markerLayer = L.layerGroup().addTo(map);
-let imageryTileLayer = null;
+/* basemap switcher clicks */
+document.getElementById('basemap-switcher').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-basemap]');
+  if(!btn) return;
+  document.querySelectorAll('#basemap-switcher button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  setBasemap(btn.dataset.basemap);
+});
 
 /* ---------- toast notifications ---------- */
 function showToast(message){
