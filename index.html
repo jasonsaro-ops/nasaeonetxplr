@@ -553,7 +553,98 @@ select.range-select{
 .leaflet-popup-tip{background:var(--bg-panel-raised); border:1px solid var(--line-bright);}
 .popup-title{font-family:var(--font-display); font-weight:700; font-size:12.5px; margin-bottom:4px;}
 .popup-cat{font-size:10px; color:var(--text-mid); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;}
-.popup-link{font-size:11px; color:var(--cyan); text-decoration:none;}
+
+.popup-link{font-size:11px; color:var(--cyan); text-decoration:none; cursor:pointer;}
+.popup-link:hover{text-decoration:underline;}
+
+/* ===== TELEMETRY FLOATING WINDOW ===== */
+#telemetry-backdrop{
+  position:fixed; inset:0; z-index:2000;
+  background:rgba(5,7,11,0.55);
+  backdrop-filter:blur(3px);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+}
+#telemetry-backdrop.open{display:flex;}
+#telemetry-modal{
+  width:min(520px, 100%);
+  max-height:min(86vh, 720px);
+  background:var(--bg-panel);
+  border:1px solid var(--line-bright);
+  border-radius:12px;
+  box-shadow:0 16px 48px rgba(0,0,0,0.55), 0 0 0 1px var(--amber-dim);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  animation:modal-in 0.2s ease;
+}
+@keyframes modal-in{
+  from{opacity:0; transform:translateY(10px) scale(0.98);}
+  to{opacity:1; transform:translateY(0) scale(1);}
+}
+.telemetry-head{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  padding:14px 16px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg, #0e1420, var(--bg-panel));
+  flex-shrink:0;
+}
+.telemetry-head h2{
+  font-size:15px; font-weight:700; line-height:1.35;
+  font-family:var(--font-body);
+}
+.telemetry-head .sub{
+  font-family:var(--font-display);
+  font-size:10px; letter-spacing:0.8px; text-transform:uppercase;
+  color:var(--text-dim); margin-top:4px;
+}
+.telemetry-close{
+  background:var(--bg-panel-raised);
+  border:1px solid var(--line-bright);
+  color:var(--text-mid);
+  width:32px; height:32px; border-radius:8px;
+  cursor:pointer; font-size:16px; line-height:1;
+  flex-shrink:0;
+  transition:.15s;
+}
+.telemetry-close:hover{color:var(--amber); border-color:var(--amber);}
+.telemetry-body{
+  flex:1; min-height:0; overflow-y:auto;
+  padding:14px 16px 18px;
+}
+.telemetry-body .detail-title{display:none;} /* title is in head */
+.telemetry-track{
+  margin-top:14px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  overflow:hidden;
+}
+.telemetry-track .th{
+  font-family:var(--font-display);
+  font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  color:var(--text-dim);
+  padding:8px 10px;
+  background:var(--bg-panel-raised);
+  border-bottom:1px solid var(--line);
+}
+.telemetry-track table{
+  width:100%; border-collapse:collapse; font-size:11.5px;
+}
+.telemetry-track th{
+  text-align:left; color:var(--text-dim);
+  font-family:var(--font-display); font-size:9.5px;
+  letter-spacing:0.6px; text-transform:uppercase;
+  padding:6px 10px; border-bottom:1px solid var(--line);
+}
+.telemetry-track td{
+  padding:6px 10px; border-bottom:1px solid var(--line);
+  color:var(--text-mid); font-family:var(--font-display); font-size:11px;
+}
+.telemetry-track tr:last-child td{border-bottom:none;}
+.telemetry-track tr:hover td{background:var(--bg-panel-raised); color:var(--text-hi);}
+
 
 /* dark-themed Leaflet map controls (zoom + reset view) */
 .leaflet-bar{
@@ -889,6 +980,22 @@ footer a{color:var(--text-dim);}
   </footer>
 
 </div>
+
+<!-- Floating telemetry window -->
+<div id="telemetry-backdrop" aria-hidden="true">
+  <div id="telemetry-modal" role="dialog" aria-modal="true" aria-labelledby="telemetry-title">
+    <div class="telemetry-head">
+      <div>
+        <h2 id="telemetry-title">Event telemetry</h2>
+        <div class="sub" id="telemetry-sub">—</div>
+      </div>
+      <button class="telemetry-close" id="telemetry-close" title="Close">✕</button>
+    </div>
+    <div class="telemetry-body" id="telemetry-body"></div>
+  </div>
+</div>
+
+
 
 <script>
 /* =========================================================
@@ -1391,11 +1498,16 @@ function renderMarkers(){
       <div class="popup-title">${ev.title}</div>
       <div class="popup-cat">${ev.categories.map(c=>c.title).join(', ')} · ${isClosed?'Closed':'Open'}</div>
       ${magLine}
-      <a class="popup-link" href="#" data-select="${ev.id}">View full telemetry →</a>
+      <a class="popup-link" href="#" data-telemetry="${ev.id}">View full telemetry →</a>
     `);
-    marker.on('popupopen', ()=>{
-      const link = document.querySelector(`[data-select="${ev.id}"]`);
-      if(link) link.addEventListener('click', (e)=>{ e.preventDefault(); selectEvent(ev.id); });
+    marker.on('popupopen', (e)=>{
+      const link = e.popup.getElement()?.querySelector(`[data-telemetry="${ev.id}"]`);
+      if(link){
+        link.addEventListener('click', (evnt)=>{
+          evnt.preventDefault();
+          openTelemetryModal(ev.id);
+        });
+      }
     });
     marker.on('click', ()=> selectEvent(ev.id));
 
@@ -1446,6 +1558,105 @@ function renderList(){
 }
 
 /* ---------- selection & detail panel ---------- */
+function buildTelemetryHTML(ev, {forModal=false}={}){
+  const cat = ev.categories[0];
+  const g = latestGeometry(ev);
+  const firstG = ev.geometry[0];
+  let magnitude = '—';
+  if(g && g.magnitudeValue != null){
+    magnitude = `${g.magnitudeValue} ${g.magnitudeUnit || ''}`;
+  }
+
+  const trackRows = (ev.geometry || []).slice().reverse().slice(0, 40).map((pt, i)=>{
+    const when = pt.date ? new Date(pt.date).toLocaleString() : '—';
+    let loc = '—';
+    if(pt.type === 'Point' && pt.coordinates){
+      loc = pt.coordinates[1].toFixed(3) + ', ' + pt.coordinates[0].toFixed(3);
+    }else if(pt.type){
+      loc = pt.type;
+    }
+    const mag = (pt.magnitudeValue != null)
+      ? `${pt.magnitudeValue} ${pt.magnitudeUnit || ''}`.trim()
+      : '—';
+    return `<tr>
+      <td>${when}</td>
+      <td>${loc}</td>
+      <td>${mag}</td>
+    </tr>`;
+  }).join('');
+
+  const trackBlock = (ev.geometry && ev.geometry.length)
+    ? `<div class="telemetry-track">
+        <div class="th">Geometry track (${ev.geometry.length} point${ev.geometry.length===1?'':'s'}${ev.geometry.length>40?' · showing latest 40':''})</div>
+        <table>
+          <thead><tr><th>Observed</th><th>Lat, Lon</th><th>Magnitude</th></tr></thead>
+          <tbody>${trackRows || '<tr><td colspan="3">No geometry</td></tr>'}</tbody>
+        </table>
+      </div>`
+    : '';
+
+  return `
+    <div class="detail-title">${ev.title}</div>
+    <div>
+      ${ev.categories.map(c=>`<span class="detail-cat-tag" style="background:${colorFor(c.id)}33; color:${colorFor(c.id)}">${c.title}</span>`).join('')}
+    </div>
+    ${ev.description ? `<div class="detail-desc">${ev.description}</div>` : ''}
+    <div class="detail-row"><span class="k">Event ID</span><span class="v">${ev.id}</span></div>
+    <div class="detail-row"><span class="k">Status</span><span class="v">${ev.closed ? 'Closed · '+new Date(ev.closed).toLocaleDateString() : '● Open'}</span></div>
+    <div class="detail-row"><span class="k">First Observed</span><span class="v">${firstG ? new Date(firstG.date).toLocaleString() : '—'}</span></div>
+    <div class="detail-row"><span class="k">Latest Update</span><span class="v">${g ? new Date(g.date).toLocaleString() : '—'}</span></div>
+    <div class="detail-row"><span class="k">Track Points</span><span class="v">${ev.geometry.length}</span></div>
+    <div class="detail-row"><span class="k">Magnitude</span><span class="v">${magnitude}</span></div>
+    <div class="detail-row"><span class="k">Coordinates</span><span class="v">${g && g.type==='Point' ? g.coordinates[1].toFixed(4)+', '+g.coordinates[0].toFixed(4) : g?.type || '—'}</span></div>
+    ${trackBlock}
+    <div class="detail-links">
+      ${(ev.sources||[]).map(s=>`<a href="${s.url}" target="_blank" rel="noopener">↗ ${s.id} — Source Reference</a>`).join('')}
+      <a href="${ev.link}" target="_blank" rel="noopener">↗ Raw EONET Record (JSON)</a>
+      ${g ? `<a href="${worldviewUrl(g, ev.geometry[0])}" target="_blank" rel="noopener">🛰 Open Coincident Imagery in NASA Worldview</a>` : ''}
+    </div>
+  `;
+}
+
+function openTelemetryModal(id){
+  const ev = state.events.find(e=>e.id === id);
+  if(!ev) return;
+  state.selectedEventId = id;
+
+  const cat = ev.categories[0];
+  document.getElementById('telemetry-title').textContent = ev.title;
+  document.getElementById('telemetry-sub').textContent =
+    (cat?.title || 'Event') + ' · ' + (ev.closed ? 'Closed' : 'Open') + ' · ' + ev.id;
+  document.getElementById('telemetry-body').innerHTML = buildTelemetryHTML(ev, {forModal:true});
+
+  const backdrop = document.getElementById('telemetry-backdrop');
+  backdrop.classList.add('open');
+  backdrop.setAttribute('aria-hidden', 'false');
+
+  // Also sync side panel so list selection stays consistent
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('active'));
+  document.querySelector('[data-tab="detail"]').classList.add('active');
+  document.getElementById('tab-list').style.display = 'none';
+  document.getElementById('tab-detail').style.display = 'block';
+  document.getElementById('tab-detail').innerHTML = buildTelemetryHTML(ev);
+  renderList();
+
+  if(cat) suggestImageryForCategory(cat.id);
+}
+
+function closeTelemetryModal(){
+  const backdrop = document.getElementById('telemetry-backdrop');
+  backdrop.classList.remove('open');
+  backdrop.setAttribute('aria-hidden', 'true');
+}
+
+document.getElementById('telemetry-close').addEventListener('click', closeTelemetryModal);
+document.getElementById('telemetry-backdrop').addEventListener('click', (e)=>{
+  if(e.target.id === 'telemetry-backdrop') closeTelemetryModal();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape') closeTelemetryModal();
+});
+
 function selectEvent(id){
   state.selectedEventId = id;
   const ev = state.events.find(e=>e.id === id);
@@ -1455,36 +1666,9 @@ function selectEvent(id){
   document.querySelector('[data-tab="detail"]').classList.add('active');
   document.getElementById('tab-list').style.display = 'none';
   document.getElementById('tab-detail').style.display = 'block';
+  document.getElementById('tab-detail').innerHTML = buildTelemetryHTML(ev);
 
   const cat = ev.categories[0];
-  const color = colorFor(cat?.id);
-  const g = latestGeometry(ev);
-  const firstG = ev.geometry[0];
-
-  let magnitude = '—';
-  if(g && g.magnitudeValue != null){
-    magnitude = `${g.magnitudeValue} ${g.magnitudeUnit || ''}`;
-  }
-
-  document.getElementById('tab-detail').innerHTML = `
-    <div class="detail-title">${ev.title}</div>
-    <div>
-      ${ev.categories.map(c=>`<span class="detail-cat-tag" style="background:${colorFor(c.id)}33; color:${colorFor(c.id)}">${c.title}</span>`).join('')}
-    </div>
-    ${ev.description ? `<div class="detail-desc">${ev.description}</div>` : ''}
-    <div class="detail-row"><span class="k">Status</span><span class="v">${ev.closed ? 'Closed · '+new Date(ev.closed).toLocaleDateString() : 'Open'}</span></div>
-    <div class="detail-row"><span class="k">First Observed</span><span class="v">${firstG ? new Date(firstG.date).toLocaleString() : '—'}</span></div>
-    <div class="detail-row"><span class="k">Latest Update</span><span class="v">${g ? new Date(g.date).toLocaleString() : '—'}</span></div>
-    <div class="detail-row"><span class="k">Track Points</span><span class="v">${ev.geometry.length}</span></div>
-    <div class="detail-row"><span class="k">Magnitude</span><span class="v">${magnitude}</span></div>
-    <div class="detail-row"><span class="k">Coordinates</span><span class="v">${g && g.type==='Point' ? g.coordinates[1].toFixed(2)+', '+g.coordinates[0].toFixed(2) : g?.type || '—'}</span></div>
-    <div class="detail-links">
-      ${(ev.sources||[]).map(s=>`<a href="${s.url}" target="_blank" rel="noopener">↗ ${s.id} — Source Reference</a>`).join('')}
-      <a href="${ev.link}" target="_blank" rel="noopener">↗ Raw EONET Record (JSON)</a>
-      ${g ? `<a href="${worldviewUrl(g, ev.geometry[0])}" target="_blank" rel="noopener">🛰 Open Coincident Imagery in NASA Worldview</a>` : ''}
-    </div>
-  `;
-
   const marker = state.markers[id];
   if(marker){
     map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 5), {duration:0.6});
