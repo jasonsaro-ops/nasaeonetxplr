@@ -684,6 +684,69 @@ select.range-select{
   padding:14px 16px 18px;
 }
 .telemetry-body .detail-title{display:none;} /* title is in head */
+
+.irwin-panel{
+  margin-top:14px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  overflow:hidden;
+}
+.irwin-panel .ih{
+  font-family:var(--font-display);
+  font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  color:var(--text-dim);
+  padding:8px 10px;
+  background:var(--bg-panel-raised);
+  border-bottom:1px solid var(--line);
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+}
+.irwin-panel .ih a{
+  color:var(--cyan); text-decoration:none; text-transform:none; letter-spacing:0.3px;
+  font-size:10.5px;
+}
+.irwin-panel .ih a:hover{text-decoration:underline;}
+.irwin-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:0;
+}
+.irwin-grid .cell{
+  padding:8px 10px;
+  border-bottom:1px solid var(--line);
+  border-right:1px solid var(--line);
+  font-size:11.5px;
+}
+.irwin-grid .cell:nth-child(2n){border-right:none;}
+.irwin-grid .cell .k{
+  font-family:var(--font-display);
+  font-size:9px; letter-spacing:0.6px; text-transform:uppercase;
+  color:var(--text-dim); margin-bottom:2px;
+}
+.irwin-grid .cell .v{color:var(--text-hi); word-break:break-word;}
+.irwin-status{
+  padding:10px;
+  font-family:var(--font-display);
+  font-size:11px;
+  color:var(--text-dim);
+  text-align:center;
+}
+.irwin-status.err{color:var(--red);}
+.btn-telemetry{
+  display:inline-block;
+  margin-top:6px;
+  font-family:var(--font-display);
+  font-size:10px;
+  letter-spacing:0.4px;
+  color:var(--cyan);
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:5px 9px;
+  cursor:pointer;
+  background:transparent;
+  text-transform:uppercase;
+}
+.btn-telemetry:hover{border-color:var(--cyan);}
+
 .telemetry-track{
   margin-top:14px;
   border:1px solid var(--line);
@@ -1828,17 +1891,25 @@ function renderMarkers(){
       <div class="popup-cat">${ev.categories.map(c=>c.title).join(', ')} · ${isClosed?'Closed':'Open'}</div>
       ${magLine}
       <a class="popup-link" href="#" data-telemetry="${ev.id}">View full telemetry →</a>
-    `);
+    `, { maxWidth: 280 });
     marker.on('popupopen', (e)=>{
-      const link = e.popup.getElement()?.querySelector(`[data-telemetry="${ev.id}"]`);
-      if(link){
+      const root = e.popup.getElement();
+      if(!root) return;
+      const link = root.querySelector(`[data-telemetry="${ev.id}"]`);
+      if(link && !link.dataset.bound){
+        link.dataset.bound = '1';
         link.addEventListener('click', (evnt)=>{
           evnt.preventDefault();
+          evnt.stopPropagation();
           openTelemetryModal(ev.id);
         });
       }
     });
-    marker.on('click', ()=> selectEvent(ev.id));
+    // Single click selects + opens floating telemetry
+    marker.on('click', ()=>{
+      selectEvent(ev.id);
+      openTelemetryModal(ev.id);
+    });
 
     // draw track line for multi-point geometries (e.g. storms)
     if(ev.geometry.length > 1){
@@ -1887,7 +1958,10 @@ function renderList(){
   }).join('');
 
   el.querySelectorAll('.event-card').forEach(card=>{
-    card.addEventListener('click', ()=> selectEvent(card.dataset.id));
+    card.addEventListener('click', ()=>{
+      selectEvent(card.dataset.id);
+      openTelemetryModal(card.dataset.id);
+    });
   });
   updateStreamBanner();
 }
@@ -1945,6 +2019,11 @@ function buildTelemetryHTML(ev, {forModal=false}={}){
       </div>`
     : '';
 
+  const hasIrwin = !!(ev.sources || []).some(s => (s.id || '').toUpperCase() === 'IRWIN');
+  const irwinBlock = hasIrwin
+    ? `<div id="irwin-slot"><div class="irwin-panel"><div class="irwin-status">Loading IRWIN Observer data…</div></div></div>`
+    : `<div id="irwin-slot"></div>`;
+
   return `
     <div class="detail-title">${ev.title}</div>
     <div>
@@ -1959,12 +2038,133 @@ function buildTelemetryHTML(ev, {forModal=false}={}){
     <div class="detail-row"><span class="k">Magnitude</span><span class="v">${magnitude}</span></div>
     <div class="detail-row"><span class="k">Coordinates</span><span class="v">${g && g.type==='Point' ? g.coordinates[1].toFixed(4)+', '+g.coordinates[0].toFixed(4) : g?.type || '—'}</span></div>
     ${trackBlock}
+    ${irwinBlock}
     <div class="detail-links">
-      ${(ev.sources||[]).map(s=>`<a href="${s.url}" target="_blank" rel="noopener">↗ ${s.id} — Source Reference</a>`).join('')}
+      ${(ev.sources||[]).map(s=>{
+        const label = s.id === 'IRWIN' ? 'IRWIN Observer' : s.id;
+        return `<a href="${s.url}" target="_blank" rel="noopener">↗ ${label} — Source Reference</a>`;
+      }).join('')}
       <a href="${ev.link}" target="_blank" rel="noopener">↗ Raw EONET Record (JSON)</a>
       ${g ? `<a href="${worldviewUrl(g, ev.geometry[0])}" target="_blank" rel="noopener">🛰 Open Coincident Imagery in NASA Worldview</a>` : ''}
     </div>
   `;
+}
+
+function extractIrwinFireId(ev){
+  const src = (ev.sources || []).find(s => (s.id || '').toUpperCase() === 'IRWIN');
+  if(!src || !src.url) return null;
+  // https://irwin.doi.gov/observer/incidents/2026-GAGAS-042702
+  const m = src.url.match(/incidents\/([^/?#]+)/i);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function irwinSourceUrl(ev){
+  const src = (ev.sources || []).find(s => (s.id || '').toUpperCase() === 'IRWIN');
+  return src?.url || null;
+}
+
+/** WFIGS (NIFC) public FeatureServer — same IRWIN-backed incident attributes shown in IRWIN Observer. */
+const WFIGS_CURRENT = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query';
+const WFIGS_ALL = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations/FeatureServer/0/query';
+
+async function fetchIrwinObserverData(uniqueFireId){
+  const where = `UniqueFireIdentifier='${uniqueFireId.replace(/'/g, "''")}'`;
+  const params = new URLSearchParams({
+    where,
+    outFields: '*',
+    returnGeometry: 'true',
+    f: 'json',
+  });
+  // Prefer current incidents; fall back to full locations layer
+  for(const base of [WFIGS_CURRENT, WFIGS_ALL]){
+    try{
+      const res = await fetch(`${base}?${params.toString()}`, { headers:{ Accept:'application/json' } });
+      if(!res.ok) continue;
+      const data = await res.json();
+      const feat = (data.features || [])[0];
+      if(feat && feat.attributes) return feat;
+    }catch(e){ console.warn('WFIGS query failed', base, e); }
+  }
+  return null;
+}
+
+function formatIrwinDate(ms){
+  if(ms == null || ms === '') return '—';
+  const n = Number(ms);
+  if(isNaN(n)) return String(ms);
+  return new Date(n).toLocaleString();
+}
+
+function renderIrwinPanel(attrs, observerUrl){
+  const fields = [
+    ['Incident Name', attrs.IncidentName],
+    ['Unique Fire ID', attrs.UniqueFireIdentifier],
+    ['IRWIN ID', attrs.IrwinID],
+    ['Type', attrs.IncidentTypeCategory === 'WF' ? 'Wildfire' : (attrs.IncidentTypeCategory || attrs.IncidentTypeKind)],
+    ['Size (acres)', attrs.IncidentSize != null ? Number(attrs.IncidentSize).toLocaleString() : null],
+    ['% Contained', attrs.PercentContained != null ? attrs.PercentContained + '%' : null],
+    ['Discovery', formatIrwinDate(attrs.FireDiscoveryDateTime)],
+    ['Cause', attrs.FireCause],
+    ['Complexity', attrs.IncidentComplexityLevel],
+    ['Behavior', [attrs.FireBehaviorGeneral, attrs.FireBehaviorGeneral2, attrs.FireBehaviorGeneral3].filter(Boolean).join(' · ')],
+    ['Fuels', [attrs.PrimaryFuelModel, attrs.SecondaryFuelModel].filter(Boolean).join(' · ')],
+    ['County / State', [attrs.POOCounty, attrs.POOState].filter(Boolean).join(', ')],
+    ['Landowner', [attrs.POOLandownerCategory, attrs.POOLandownerKind].filter(Boolean).join(' · ')],
+    ['Protecting Unit', attrs.POOProtectingUnit],
+    ['GACC', attrs.GACC],
+    ['Personnel', attrs.TotalIncidentPersonnel],
+    ['Est. Cost', attrs.EstimatedCostToDate != null ? ('$' + Number(attrs.EstimatedCostToDate).toLocaleString()) : null],
+    ['Short description', attrs.IncidentShortDescription],
+  ].filter(([,v]) => v != null && v !== '');
+
+  const cells = fields.map(([k,v])=>`
+    <div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>
+  `).join('');
+
+  return `
+    <div class="irwin-panel" id="irwin-panel">
+      <div class="ih">
+        <span>IRWIN Observer · WFIGS</span>
+        ${observerUrl ? `<a href="${observerUrl}" target="_blank" rel="noopener">Open in IRWIN Observer ↗</a>` : ''}
+      </div>
+      <div class="irwin-grid">${cells}</div>
+    </div>
+  `;
+}
+
+async function loadIrwinIntoModal(ev){
+  // Prefer the floating modal slot; fall back to side detail panel
+  const hosts = [
+    document.querySelector('#telemetry-body #irwin-slot'),
+    document.querySelector('#tab-detail #irwin-slot'),
+  ].filter(Boolean);
+  if(hosts.length === 0) return;
+
+  const fireId = extractIrwinFireId(ev);
+  const observerUrl = irwinSourceUrl(ev);
+
+  const setAll = (html)=>{ hosts.forEach(h=>{ h.innerHTML = html; }); };
+
+  if(!fireId){
+    setAll('');
+    return;
+  }
+  setAll(`<div class="irwin-panel"><div class="irwin-status">Loading IRWIN Observer data for ${fireId}…</div></div>`);
+  try{
+    const feat = await fetchIrwinObserverData(fireId);
+    if(!feat){
+      setAll(`<div class="irwin-panel">
+        <div class="ih"><span>IRWIN Observer</span>
+          ${observerUrl ? `<a href="${observerUrl}" target="_blank" rel="noopener">Open in IRWIN Observer ↗</a>` : ''}
+        </div>
+        <div class="irwin-status">No WFIGS record found for <b>${fireId}</b>. The Observer page may still have detail.</div>
+      </div>`);
+      return;
+    }
+    setAll(renderIrwinPanel(feat.attributes, observerUrl));
+  }catch(err){
+    setAll(`<div class="irwin-panel"><div class="irwin-status err">IRWIN load failed: ${err.message}</div></div>`);
+  }
 }
 
 function openTelemetryModal(id){
@@ -1983,14 +2183,16 @@ function openTelemetryModal(id){
   backdrop.classList.add('open');
   backdrop.setAttribute('aria-hidden', 'false');
 
-  // Also sync side panel so list selection stays consistent
-  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('active'));
-  document.querySelector('[data-tab="detail"]').classList.add('active');
-  document.getElementById('tab-list').style.display = 'none';
-  document.getElementById('tab-detail').style.display = 'block';
+  // Sync side panel detail content, then load IRWIN into modal + side slots
   document.getElementById('tab-detail').innerHTML = buildTelemetryHTML(ev);
+  loadIrwinIntoModal(ev);
   renderList();
 
+  // Map focus without requiring tab switch
+  const marker = state.markers[id];
+  if(marker){
+    map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 5), {duration:0.55});
+  }
   if(cat) suggestImageryForCategory(cat.id);
 }
 
