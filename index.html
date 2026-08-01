@@ -437,6 +437,51 @@ select.range-select{
 }
 .legend-mag .mdot{border-radius:50%; background:var(--amber); flex-shrink:0;}
 
+
+/* dark-themed Leaflet layers control */
+.leaflet-control-layers{
+  background:rgba(11,15,22,0.94) !important;
+  border:1px solid var(--line-bright) !important;
+  border-radius:8px !important;
+  color:var(--text-mid) !important;
+  box-shadow:0 2px 10px rgba(0,0,0,0.5) !important;
+  backdrop-filter:blur(6px);
+}
+.leaflet-control-layers-toggle{
+  background-color:rgba(11,15,22,0.94) !important;
+  width:34px !important; height:34px !important;
+  border-radius:8px !important;
+}
+.leaflet-control-layers-expanded{
+  padding:10px 12px !important;
+  min-width:160px;
+}
+.leaflet-control-layers label{
+  color:var(--text-mid) !important;
+  font-family:var(--font-body);
+  font-size:12px !important;
+  margin:3px 0;
+}
+.leaflet-control-layers-separator{border-top-color:var(--line) !important;}
+.leaflet-control-layers input{accent-color:var(--amber);}
+
+/* fit-to-data control */
+.fit-data-btn{
+  font-family:var(--font-display);
+  font-size:10px;
+  letter-spacing:0.4px;
+  background:rgba(11,15,22,0.92);
+  border:1px solid var(--line-bright);
+  backdrop-filter:blur(6px);
+  padding:6px 12px;
+  border-radius:20px;
+  color:var(--text-mid);
+  cursor:pointer;
+  display:flex; align-items:center; gap:6px;
+  transition:.15s;
+}
+.fit-data-btn:hover{color:var(--amber); border-color:var(--amber);}
+
 /* ===== IMAGERY LAYER CONTROL ===== */
 .map-overlay-right{
   position:absolute; top:12px; right:12px; z-index:400;
@@ -774,11 +819,15 @@ footer a{color:var(--text-dim);}
           <div class="chip">WINDOW: <b id="chip-days">60D</b></div>
           <div class="chip">EVENTS: <b id="chip-count">0</b></div>
         </div>
-        <div class="basemap-switcher" id="basemap-switcher">
-          <button data-basemap="streets" class="active">Streets</button>
-          <button data-basemap="dark">Dark</button>
-          <button data-basemap="topo">Topo</button>
-          <button data-basemap="imagery">Satellite</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="basemap-switcher" id="basemap-switcher">
+            <button data-basemap="streets" class="active">Streets</button>
+            <button data-basemap="dark">Dark</button>
+            <button data-basemap="topo">Topo</button>
+            <button data-basemap="imagery">Satellite</button>
+            <button data-basemap="osm">OSM</button>
+          </div>
+          <button class="fit-data-btn" id="fit-data-btn" title="Zoom map to show all filtered events">⊙ Fit events</button>
         </div>
       </div>
       <div class="legend-box" id="legend-box">
@@ -846,7 +895,8 @@ footer a{color:var(--text-dim);}
    EONETXPLR — NASA EONET dashboard
    ========================================================= */
 
-const EONET_BASE = 'https://eonet.gsfc.nasa.gov/api/v3';
+const EONET_BASE = 'https://eonet.gsfc.nasa.gov/api/v3'; // NASA EONET API v3 (current)
+
 
 const CATEGORY_COLORS = {
   wildfires:'#ff6b35', volcanoes:'#ff4d5e', severeStorms:'#4ea8de',
@@ -900,27 +950,34 @@ let state = {
 const DEFAULT_CENTER = [20, 10];
 const DEFAULT_ZOOM = 2.4;
 
-/* Esri ArcGIS Online tiles — not flagged by common ad/tracker blocklists
-   (unlike cartocdn.com). Provides a real zoomable world map by default. */
+/* Basemaps: Esri (ad-blocker friendly) + OSM fallback.
+   Mapbox GL / MapLibre GL are heavier vector-tile stacks that need a
+   style URL (and Mapbox needs a token). Leaflet raster tiles remain the
+   most reliable zero-config choice for this dashboard. */
 const BASEMAPS = {
   streets: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: '© Esri',
+    attribution: 'Tiles © Esri',
     maxZoom: 19,
   },
   dark: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-    attribution: '© Esri',
+    attribution: 'Tiles © Esri',
     maxZoom: 16,
   },
   topo: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: '© Esri',
+    attribution: 'Tiles © Esri',
     maxZoom: 19,
   },
   imagery: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: '© Esri',
+    attribution: 'Tiles © Esri',
+    maxZoom: 19,
+  },
+  osm: {
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© OpenStreetMap',
     maxZoom: 19,
   },
 };
@@ -928,13 +985,17 @@ const BASEMAPS = {
 const map = L.map('map', {
   worldCopyJump: true,
   zoomControl: false,
-  attributionControl: false,
-  minZoom: 2,
+  attributionControl: true,
+  minZoom: 1,
+  maxZoom: 18,
 }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+// Keep attribution compact
+map.attributionControl.setPrefix('');
 
 let baseTileLayer = null;
 let imageryTileLayer = null;
-const markerLayer = L.layerGroup(); // created early; added after basemap
+const markerLayer = L.layerGroup();
 
 function setBasemap(key){
   const def = BASEMAPS[key] || BASEMAPS.streets;
@@ -942,26 +1003,54 @@ function setBasemap(key){
   baseTileLayer = L.tileLayer(def.url, {
     maxZoom: def.maxZoom,
     attribution: def.attribution,
+    crossOrigin: true,
     errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
-  }).addTo(map);
-  // Stack order: basemap (bottom) → GIBS imagery → event markers (top)
+  });
+  baseTileLayer.addTo(map);
+  // Stack: basemap → GIBS → markers
   if(imageryTileLayer) imageryTileLayer.bringToFront();
   if(markerLayer) markerLayer.bringToFront();
 }
-setBasemap('streets'); // default: real street map of the world
+setBasemap('streets');
 markerLayer.addTo(map);
 
-// Reset-view control, styled and stacked with the zoom control (bottom-right,
-// the one corner not already occupied by chips, legend, or the imagery panel)
+/* Native Leaflet layers control (collapsed) — mirrors the segmented switcher */
+const baseLayersForControl = {};
+Object.keys(BASEMAPS).forEach(key=>{
+  const def = BASEMAPS[key];
+  // Pre-create inactive layers for the control; only one is active at a time via setBasemap
+  baseLayersForControl[key.charAt(0).toUpperCase() + key.slice(1)] = L.tileLayer(def.url, {
+    maxZoom: def.maxZoom,
+    attribution: def.attribution,
+    crossOrigin: true,
+  });
+});
+// We drive basemap via setBasemap; the L.control.layers is optional alternate UI.
+// Overlay layers (markers always on)
+const overlaysForControl = { 'Events': markerLayer };
+L.control.layers(null, overlaysForControl, {
+  position: 'topright',
+  collapsed: true,
+}).addTo(map);
+
+/* Zoom + reset-to-world + fit-to-events controls (bottom-right) */
 const ResetViewControl = L.Control.extend({
   options:{ position:'bottomright' },
   onAdd: function(mapInstance){
     const div = L.DomUtil.create('div', 'leaflet-bar');
-    div.innerHTML = '<a href="#" role="button" title="Reset map view" style="font-size:16px;">⌂</a>';
+    div.innerHTML = [
+      '<a href="#" role="button" title="Reset to world view" style="font-size:16px;">⌂</a>',
+      '<a href="#" role="button" id="leaflet-fit-events" title="Fit map to filtered events" style="font-size:14px;">⊙</a>',
+    ].join('');
     L.DomEvent.disableClickPropagation(div);
-    L.DomEvent.on(div, 'click', (e)=>{
+    const links = div.querySelectorAll('a');
+    L.DomEvent.on(links[0], 'click', (e)=>{
       e.preventDefault();
       mapInstance.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, {duration:0.7});
+    });
+    L.DomEvent.on(links[1], 'click', (e)=>{
+      e.preventDefault();
+      fitMapToEvents();
     });
     return div;
   }
@@ -969,7 +1058,31 @@ const ResetViewControl = L.Control.extend({
 map.addControl(new ResetViewControl());
 L.control.zoom({position:'bottomright'}).addTo(map);
 
-/* basemap switcher clicks */
+/** Fit viewport to current filtered event markers (or world if none). */
+function fitMapToEvents(){
+  const pts = [];
+  state.filteredEvents.forEach(ev=>{
+    const g = latestGeometry(ev);
+    if(!g) return;
+    if(g.type === 'Point'){
+      pts.push([g.coordinates[1], g.coordinates[0]]);
+    }else if(g.type === 'Polygon' && g.coordinates?.[0]){
+      g.coordinates[0].forEach(c=> pts.push([c[1], c[0]]));
+    }
+  });
+  if(pts.length === 0){
+    map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, {duration:0.7});
+    return;
+  }
+  if(pts.length === 1){
+    map.flyTo(pts[0], 6, {duration:0.7});
+    return;
+  }
+  const bounds = L.latLngBounds(pts);
+  map.flyToBounds(bounds.pad(0.15), {duration:0.8, maxZoom:8});
+}
+
+/* Segmented basemap switcher */
 document.getElementById('basemap-switcher').addEventListener('click', e=>{
   const btn = e.target.closest('button[data-basemap]');
   if(!btn) return;
@@ -977,6 +1090,10 @@ document.getElementById('basemap-switcher').addEventListener('click', e=>{
   btn.classList.add('active');
   setBasemap(btn.dataset.basemap);
 });
+
+/* Prominent Fit events button in overlay */
+document.getElementById('fit-data-btn').addEventListener('click', fitMapToEvents);
+
 
 /* ---------- toast notifications ---------- */
 function showToast(message){
@@ -1069,8 +1186,12 @@ function setApiStatus(mode, text){
 
 /* ---------- fetch helpers ---------- */
 async function fetchJSON(url){
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+    cache: 'no-cache',
+  });
+  if(!res.ok) throw new Error('HTTP ' + res.status + ' for ' + url);
   return res.json();
 }
 
@@ -1115,11 +1236,15 @@ async function loadEvents(){
         playAlertTone();
       }
     }
+    const wasFirst = state.isFirstLoad;
     state.knownEventIds = currentIds;
     state.isFirstLoad = false;
 
     applyFilters();
     renderCategoryCounts();
+    if(wasFirst && state.filteredEvents.length > 0){
+      setTimeout(fitMapToEvents, 200);
+    }
   }catch(err){
     console.error(err);
     setApiStatus('err','Offline');
