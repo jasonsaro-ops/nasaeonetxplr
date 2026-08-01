@@ -393,9 +393,76 @@ select.range-select{
 .legend-box .lh{
   font-family:var(--font-display); font-size:9.5px; letter-spacing:1px;
   color:var(--text-dim); text-transform:uppercase; margin-bottom:7px;
+  display:flex; justify-content:space-between; align-items:center;
 }
 .legend-row{display:flex; align-items:center; gap:7px; padding:2px 0; color:var(--text-mid);}
 .legend-row .dot{width:8px;height:8px;border-radius:50%; box-shadow:0 0 6px 0 currentColor;}
+.legend-mag{
+  margin-top:8px; padding-top:8px; border-top:1px solid var(--line);
+  display:flex; align-items:center; gap:8px; color:var(--text-dim); font-size:9.5px;
+}
+.legend-mag .mdot{border-radius:50%; background:var(--amber); flex-shrink:0;}
+
+/* ===== IMAGERY LAYER CONTROL ===== */
+.map-overlay-right{
+  position:absolute; top:12px; right:12px; z-index:400;
+  display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+}
+.imagery-toggle{
+  font-family:var(--font-display);
+  font-size:10.5px;
+  letter-spacing:0.5px;
+  background:rgba(11,15,22,0.92);
+  border:1px solid var(--line-bright);
+  backdrop-filter:blur(6px);
+  padding:7px 12px;
+  border-radius:20px;
+  color:var(--text-mid);
+  cursor:pointer;
+  display:flex; align-items:center; gap:7px;
+  transition:.15s;
+}
+.imagery-toggle:hover{color:var(--text-hi); border-color:var(--text-mid);}
+.imagery-toggle.on{color:var(--cyan); border-color:var(--cyan); background:rgba(79,209,197,0.1);}
+.imagery-toggle .led{width:6px;height:6px;border-radius:50%; background:var(--text-dim);}
+.imagery-toggle.on .led{background:var(--cyan); box-shadow:0 0 6px var(--cyan);}
+
+.imagery-panel{
+  width:250px;
+  background:rgba(11,15,22,0.96);
+  border:1px solid var(--line-bright);
+  backdrop-filter:blur(6px);
+  border-radius:10px;
+  padding:12px;
+  display:none;
+}
+.imagery-panel.open{display:block;}
+.imagery-panel .ih{
+  font-family:var(--font-display); font-size:9.5px; letter-spacing:1px;
+  color:var(--text-dim); text-transform:uppercase; margin-bottom:9px;
+  display:flex; justify-content:space-between; align-items:center;
+}
+.imagery-panel label{
+  display:block; font-family:var(--font-display); font-size:9px; letter-spacing:0.8px;
+  text-transform:uppercase; color:var(--text-dim); margin-bottom:5px; margin-top:10px;
+}
+.imagery-panel label:first-of-type{margin-top:0;}
+.imagery-panel select, .imagery-panel input[type=date]{
+  width:100%;
+  background:var(--bg-panel-raised);
+  border:1px solid var(--line-bright);
+  color:var(--text-hi);
+  border-radius:6px;
+  padding:6px 8px;
+  font-family:var(--font-body);
+  font-size:11.5px;
+}
+.imagery-panel input[type=range]{width:100%; accent-color:var(--cyan);}
+.imagery-panel .op-val{font-family:var(--font-display); font-size:10px; color:var(--cyan); float:right;}
+.imagery-desc{
+  font-size:10.5px; color:var(--text-dim); line-height:1.5; margin-top:9px;
+  border-top:1px solid var(--line); padding-top:9px;
+}
 
 .leaflet-popup-content-wrapper{
   background:var(--bg-panel-raised);
@@ -616,8 +683,30 @@ footer a{color:var(--text-dim);}
         <div class="chip">EVENTS: <b id="chip-count">0</b></div>
       </div>
       <div class="legend-box" id="legend-box">
-        <div class="lh">Category Key</div>
+        <div class="lh"><span>Category Key</span></div>
         <div id="legend-rows"></div>
+        <div class="legend-mag" id="legend-mag" style="display:none;">
+          <span class="mdot" style="width:6px;height:6px;"></span>
+          <span class="mdot" style="width:11px;height:11px;"></span>
+          <span class="mdot" style="width:16px;height:16px;"></span>
+          <span>Marker size = event magnitude</span>
+        </div>
+      </div>
+
+      <div class="map-overlay-right">
+        <button class="imagery-toggle" id="imagery-toggle-btn">
+          <span class="led"></span> Satellite Imagery Layers
+        </button>
+        <div class="imagery-panel" id="imagery-panel">
+          <div class="ih"><span>NASA GIBS Imagery</span></div>
+          <label>Layer</label>
+          <select id="imagery-layer-select"></select>
+          <label>Date (UTC)</label>
+          <input type="date" id="imagery-date">
+          <label>Opacity <span class="op-val" id="imagery-opacity-val">70%</span></label>
+          <input type="range" id="imagery-opacity" min="10" max="100" value="70">
+          <div class="imagery-desc" id="imagery-desc">Near-real-time satellite imagery from NASA's Global Imagery Browse Services, matched to event category.</div>
+        </div>
       </div>
     </div>
 
@@ -669,6 +758,26 @@ const CATEGORY_COLORS = {
 };
 function colorFor(catId){ return CATEGORY_COLORS[catId] || '#ff8a3d'; }
 
+/* NASA GIBS (Global Imagery Browse Services) WMTS layer catalog.
+   These are the same near-real-time satellite feeds EONET's own /layers
+   endpoint points to for each category, wired directly as Leaflet tile
+   layers rather than parsed from WMTS GetCapabilities XML. */
+const GIBS_LAYERS = [
+  { id:'VIIRS_SNPP_CorrectedReflectance_TrueColor', label:'VIIRS True Color (daily)', ext:'jpg', maxLevel:9, forCats:['wildfires','severeStorms','dustHaze','floods','manmade'] },
+  { id:'MODIS_Terra_CorrectedReflectance_TrueColor', label:'MODIS Terra True Color (daily)', ext:'jpg', maxLevel:9, forCats:['wildfires','severeStorms','volcanoes','dustHaze'] },
+  { id:'VIIRS_SNPP_Thermal_Anomalies_375m_All', label:'Fires & Thermal Anomalies (VIIRS)', ext:'png', maxLevel:9, forCats:['wildfires','volcanoes'] },
+  { id:'MODIS_Terra_Thermal_Anomalies_All', label:'Fires & Thermal Anomalies (MODIS)', ext:'png', maxLevel:7, forCats:['wildfires','volcanoes'] },
+  { id:'MODIS_Combined_Value_Added_AOD', label:'Aerosol Optical Depth (Dust/Smoke)', ext:'png', maxLevel:6, forCats:['dustHaze','wildfires'] },
+  { id:'MODIS_Terra_Snow_Cover', label:'Snow Cover', ext:'png', maxLevel:8, forCats:['snow','seaLakeIce'] },
+  { id:'MODIS_Terra_Sea_Ice', label:'Sea Ice', ext:'png', maxLevel:7, forCats:['seaLakeIce'] },
+  { id:'IMERG_Precipitation_Rate', label:'Precipitation Rate', ext:'png', maxLevel:8, forCats:['severeStorms','floods'] },
+  { id:'GHRSST_L4_MUR_Sea_Surface_Temperature', label:'Sea Surface Temperature', ext:'png', maxLevel:7, forCats:['severeStorms','waterColor'] },
+];
+
+function gibsTileUrl(layer, dateStr){
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer.id}/default/${dateStr}/GoogleMapsCompatible_Level${layer.maxLevel}/{z}/{y}/{x}.${layer.ext}`;
+}
+
 let state = {
   categories: [],
   sources: [],
@@ -681,6 +790,7 @@ let state = {
   search: '',
   selectedEventId: null,
   markers: {},
+  imagery: { enabled:false, layerId: GIBS_LAYERS[0].id, date: null, opacity: 0.7 },
 };
 
 const map = L.map('map', {
@@ -698,6 +808,47 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_matter/{z}/{x}/{y}{r}.png', 
 }).addTo(map);
 
 const markerLayer = L.layerGroup().addTo(map);
+let imageryTileLayer = null;
+
+/* ---------- imagery (NASA GIBS) controls ---------- */
+function yesterdayUTC(){
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0,10);
+}
+
+function populateImageryLayerSelect(){
+  const sel = document.getElementById('imagery-layer-select');
+  sel.innerHTML = GIBS_LAYERS.map(l=>`<option value="${l.id}">${l.label}</option>`).join('');
+  sel.value = state.imagery.layerId;
+}
+
+function updateImageryLayer(){
+  if(imageryTileLayer){ map.removeLayer(imageryTileLayer); imageryTileLayer = null; }
+  if(!state.imagery.enabled) return;
+  const layerDef = GIBS_LAYERS.find(l=>l.id === state.imagery.layerId) || GIBS_LAYERS[0];
+  const date = state.imagery.date || yesterdayUTC();
+  imageryTileLayer = L.tileLayer(gibsTileUrl(layerDef, date), {
+    maxNativeZoom: layerDef.maxLevel,
+    maxZoom: 19,
+    opacity: state.imagery.opacity,
+    attribution: 'Imagery: NASA GIBS / ' + layerDef.label,
+    tileSize: 256,
+  });
+  imageryTileLayer.addTo(map);
+  markerLayer.bringToFront(); // keep event markers above imagery
+}
+
+function suggestImageryForCategory(catId){
+  const match = GIBS_LAYERS.find(l => l.forCats.includes(catId));
+  if(match){
+    state.imagery.layerId = match.id;
+    document.getElementById('imagery-layer-select').value = match.id;
+    document.getElementById('imagery-desc').textContent =
+      `Auto-matched to "${state.categories.find(c=>c.id===catId)?.title || catId}" events. ${match.label}, sourced from NASA GIBS near-real-time feeds.`;
+    if(state.imagery.enabled) updateImageryLayer();
+  }
+}
 
 /* ---------- clock ---------- */
 function tickClock(){
@@ -842,14 +993,47 @@ function latestGeometry(ev){
   return geoms[geoms.length-1];
 }
 
+/* Build a per-category magnitude range so marker sizes are comparable
+   within a category (e.g. storm wind speed in kt is not comparable to
+   volcano VEI), then scale into a MIN..MAX pixel range. */
+function magnitudeRangesByCategory(events){
+  const ranges = {};
+  events.forEach(ev=>{
+    const cat = ev.categories[0]?.id;
+    const g = latestGeometry(ev);
+    const val = g?.magnitudeValue;
+    if(val == null || isNaN(val)) return;
+    if(!ranges[cat]) ranges[cat] = { min: val, max: val };
+    ranges[cat].min = Math.min(ranges[cat].min, val);
+    ranges[cat].max = Math.max(ranges[cat].max, val);
+  });
+  return ranges;
+}
+
+const MARKER_MIN = 8, MARKER_MAX = 22;
+function markerSizeFor(ev, ranges){
+  const cat = ev.categories[0]?.id;
+  const g = latestGeometry(ev);
+  const val = g?.magnitudeValue;
+  const r = ranges[cat];
+  if(val == null || isNaN(val) || !r || r.max === r.min) return MARKER_MIN + 4; // default flat size
+  const t = (val - r.min) / (r.max - r.min);
+  return Math.round(MARKER_MIN + t * (MARKER_MAX - MARKER_MIN));
+}
+
 function renderMarkers(){
   markerLayer.clearLayers();
+  const magRanges = magnitudeRangesByCategory(state.filteredEvents);
+  const hasAnyMagnitude = Object.keys(magRanges).length > 0;
+  document.getElementById('legend-mag').style.display = hasAnyMagnitude ? 'flex' : 'none';
+
   state.filteredEvents.forEach(ev=>{
     const g = latestGeometry(ev);
     if(!g) return;
     const cat = ev.categories[0]?.id;
     const color = colorFor(cat);
     const isClosed = !!ev.closed;
+    const size = markerSizeFor(ev, magRanges);
 
     let latlng;
     if(g.type === 'Point'){
@@ -862,15 +1046,19 @@ function renderMarkers(){
 
     const icon = L.divIcon({
       className:'',
-      html:`<div class="evt-marker ${isClosed?'closed':''}" style="width:12px;height:12px;background:${color};color:${color};box-shadow:0 0 8px 1px ${color}88;"></div>`,
-      iconSize:[12,12],
-      iconAnchor:[6,6]
+      html:`<div class="evt-marker ${isClosed?'closed':''}" style="width:${size}px;height:${size}px;background:${color};color:${color};box-shadow:0 0 8px 1px ${color}88;"></div>`,
+      iconSize:[size,size],
+      iconAnchor:[size/2,size/2]
     });
+
+    const magLine = (g.magnitudeValue != null)
+      ? `<div class="popup-cat">Magnitude: ${g.magnitudeValue} ${g.magnitudeUnit || ''}</div>` : '';
 
     const marker = L.marker(latlng, {icon}).addTo(markerLayer);
     marker.bindPopup(`
       <div class="popup-title">${ev.title}</div>
       <div class="popup-cat">${ev.categories.map(c=>c.title).join(', ')} · ${isClosed?'Closed':'Open'}</div>
+      ${magLine}
       <a class="popup-link" href="#" data-select="${ev.id}">View full telemetry →</a>
     `);
     marker.on('popupopen', ()=>{
@@ -961,6 +1149,7 @@ function selectEvent(id){
     <div class="detail-links">
       ${(ev.sources||[]).map(s=>`<a href="${s.url}" target="_blank" rel="noopener">↗ ${s.id} — Source Reference</a>`).join('')}
       <a href="${ev.link}" target="_blank" rel="noopener">↗ Raw EONET Record (JSON)</a>
+      ${g ? `<a href="${worldviewUrl(g, ev.geometry[0])}" target="_blank" rel="noopener">🛰 Open Coincident Imagery in NASA Worldview</a>` : ''}
     </div>
   `;
 
@@ -969,7 +1158,20 @@ function selectEvent(id){
     map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 5), {duration:0.6});
     marker.openPopup();
   }
+  if(cat) suggestImageryForCategory(cat.id);
   renderList();
+}
+
+/* Deep link into NASA Worldview, centered on the event location and
+   dated to its most recent observation — a fast way to cross-reference
+   full-resolution imagery beyond what the GIBS tile overlay shows. */
+function worldviewUrl(g, firstG){
+  if(g.type !== 'Point') return 'https://worldview.earthdata.nasa.gov/';
+  const [lon, lat] = g.coordinates;
+  const d = 4; // degrees padding around the point
+  const date = (g.date || firstG?.date || '').slice(0,10);
+  const bbox = [lon-d, lat-d, lon+d, lat+d].join(',');
+  return `https://worldview.earthdata.nasa.gov/?v=${bbox}&t=${date}`;
 }
 
 /* tab switching */
@@ -1083,6 +1285,39 @@ document.getElementById('src-toggle-all').addEventListener('click', ()=>{
 
 document.getElementById('apply-btn').addEventListener('click', loadEvents);
 document.getElementById('refresh-btn').addEventListener('click', loadEvents);
+
+/* ---------- imagery panel wiring ---------- */
+populateImageryLayerSelect();
+document.getElementById('imagery-date').value = yesterdayUTC();
+state.imagery.date = yesterdayUTC();
+
+document.getElementById('imagery-toggle-btn').addEventListener('click', ()=>{
+  const panel = document.getElementById('imagery-panel');
+  const nowOpen = !panel.classList.contains('open');
+  panel.classList.toggle('open', nowOpen);
+  state.imagery.enabled = nowOpen;
+  document.getElementById('imagery-toggle-btn').classList.toggle('on', nowOpen);
+  updateImageryLayer();
+});
+
+document.getElementById('imagery-layer-select').addEventListener('change', e=>{
+  state.imagery.layerId = e.target.value;
+  const layerDef = GIBS_LAYERS.find(l=>l.id === e.target.value);
+  document.getElementById('imagery-desc').textContent =
+    `${layerDef.label}, sourced from NASA GIBS near-real-time feeds.`;
+  if(state.imagery.enabled) updateImageryLayer();
+});
+
+document.getElementById('imagery-date').addEventListener('change', e=>{
+  state.imagery.date = e.target.value;
+  if(state.imagery.enabled) updateImageryLayer();
+});
+
+document.getElementById('imagery-opacity').addEventListener('input', e=>{
+  state.imagery.opacity = e.target.value / 100;
+  document.getElementById('imagery-opacity-val').textContent = e.target.value + '%';
+  if(imageryTileLayer) imageryTileLayer.setOpacity(state.imagery.opacity);
+});
 
 /* ---------- boot ---------- */
 async function init(){
