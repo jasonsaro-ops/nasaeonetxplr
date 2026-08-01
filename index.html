@@ -334,6 +334,75 @@ select.range-select{
 .src-item:hover{color:var(--text-hi);}
 .src-item input{accent-color:var(--cyan);}
 
+
+.telem-filters{
+  display:flex; flex-direction:column; gap:8px;
+}
+.telem-filters label.tf-label{
+  display:block;
+  font-family:var(--font-display);
+  font-size:9px;
+  letter-spacing:0.8px;
+  text-transform:uppercase;
+  color:var(--text-dim);
+  margin-bottom:4px;
+}
+.telem-filters .tf-row{
+  display:flex; gap:6px; align-items:center;
+}
+.telem-filters input[type=number]{
+  width:100%;
+  background:var(--bg-panel-raised);
+  border:1px solid var(--line-bright);
+  color:var(--text-hi);
+  border-radius:6px;
+  padding:7px 9px;
+  font-family:var(--font-body);
+  font-size:12px;
+}
+.telem-filters input[type=number]:focus{outline:none; border-color:var(--amber);}
+.telem-filters .hint{
+  font-size:10px; color:var(--text-dim); line-height:1.4;
+}
+
+/* track filter bar inside telemetry modal */
+.track-filter-bar{
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+  padding:8px 10px;
+  background:var(--bg-panel-raised);
+  border-bottom:1px solid var(--line);
+}
+.track-filter-bar input[type=search],
+.track-filter-bar input[type=number]{
+  background:var(--bg-void);
+  border:1px solid var(--line-bright);
+  color:var(--text-hi);
+  border-radius:5px;
+  padding:5px 8px;
+  font-size:11px;
+  font-family:var(--font-body);
+}
+.track-filter-bar input[type=search]{flex:1; min-width:120px;}
+.track-filter-bar input[type=number]{width:72px;}
+.track-filter-bar label{
+  font-family:var(--font-display);
+  font-size:9px; letter-spacing:0.5px;
+  text-transform:uppercase; color:var(--text-dim);
+  display:flex; align-items:center; gap:5px;
+}
+.track-filter-bar .seg{
+  flex:0 0 auto;
+}
+.track-filter-bar .seg button{
+  padding:5px 8px; font-size:9.5px;
+}
+.track-count-badge{
+  font-family:var(--font-display);
+  font-size:10px;
+  color:var(--cyan);
+  margin-left:auto;
+}
+
 .apply-row{
   display:flex; gap:8px; margin-top:6px;
 }
@@ -731,6 +800,68 @@ select.range-select{
 }
 .tabbar button.active{color:var(--amber); border-bottom-color:var(--amber);}
 
+
+/* live stream */
+.stream-banner{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 11px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--bg-panel-raised);
+  margin-bottom:10px;
+  font-family:var(--font-display);
+  font-size:10px;
+  letter-spacing:0.6px;
+  color:var(--text-mid);
+  text-transform:uppercase;
+}
+.stream-banner .pulse-dot{
+  width:8px; height:8px; border-radius:50%;
+  background:var(--text-dim);
+  flex-shrink:0;
+}
+.stream-banner.live .pulse-dot{
+  background:#3ddc84;
+  box-shadow:0 0 8px #3ddc84;
+  animation:pulse 1.6s ease-in-out infinite;
+}
+.stream-banner .stream-meta{margin-left:auto; color:var(--text-dim); font-size:9.5px;}
+.stream-banner .stream-meta b{color:var(--cyan); font-weight:600;}
+
+.stream-list{display:flex; flex-direction:column; gap:6px; margin-bottom:12px;}
+.stream-item{
+  border:1px solid var(--line);
+  border-left:3px solid var(--amber);
+  border-radius:6px;
+  padding:8px 10px;
+  background:rgba(255,138,61,0.06);
+  cursor:pointer;
+  animation:stream-in 0.35s ease;
+  font-size:12px;
+}
+@keyframes stream-in{
+  from{opacity:0; transform:translateY(-6px);}
+  to{opacity:1; transform:translateY(0);}
+}
+.stream-item:hover{border-color:var(--line-bright);}
+.stream-item .st-title{font-weight:600; margin-bottom:3px; line-height:1.3;}
+.stream-item .st-meta{
+  font-family:var(--font-display);
+  font-size:9.5px;
+  color:var(--text-dim);
+  text-transform:uppercase;
+  display:flex; justify-content:space-between; gap:8px;
+}
+.stream-item .st-new{color:var(--amber);}
+.stream-empty{
+  font-family:var(--font-display);
+  font-size:10.5px;
+  color:var(--text-dim);
+  text-align:center;
+  padding:12px 8px;
+  letter-spacing:0.5px;
+}
+
 .event-card{
   border:1px solid var(--line);
   border-radius:8px;
@@ -834,12 +965,13 @@ footer a{color:var(--text-dim);}
     </div>
 
     <div class="header-right">
-      <select class="range-select" id="autorefresh-select" style="width:auto; padding:5px 8px; font-size:10.5px;" title="Auto-refresh interval">
-        <option value="0">Auto-refresh: Off</option>
-        <option value="1">Every 1 min</option>
-        <option value="2">Every 2 min</option>
-        <option value="5" selected>Every 5 min</option>
-        <option value="10">Every 10 min</option>
+      <select class="range-select" id="autorefresh-select" style="width:auto; padding:5px 8px; font-size:10.5px;" title="Live stream poll interval">
+        <option value="0">Stream: Off</option>
+        <option value="0.5">Stream: 30 sec</option>
+        <option value="1">Stream: 1 min</option>
+        <option value="2">Stream: 2 min</option>
+        <option value="5" selected>Stream: 5 min</option>
+        <option value="10">Stream: 10 min</option>
       </select>
       <button class="icon-btn" id="alert-toggle-btn" title="Toggle audio alerts for new events">🔔</button>
       <div id="clock">— <b>—</b></div>
@@ -891,6 +1023,43 @@ footer a{color:var(--text-dim);}
           <h3>Sources <button id="src-toggle-all">clear</button></h3>
           <div class="src-list" id="source-list">
             <div class="loader"><div class="spinner"></div>Loading sources…</div>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <h3>Telemetry <button type="button" id="telem-reset">reset</button></h3>
+          <div class="telem-filters">
+            <div>
+              <label class="tf-label">Magnitude</label>
+              <div class="seg" id="mag-seg">
+                <button type="button" data-mag="any" class="active">Any</button>
+                <button type="button" data-mag="has">Has value</button>
+                <button type="button" data-mag="min">Min ≥</button>
+              </div>
+              <div class="tf-row" style="margin-top:6px;">
+                <input type="number" id="mag-min" step="any" placeholder="Min magnitude" disabled />
+              </div>
+            </div>
+            <div>
+              <label class="tf-label">Track length</label>
+              <div class="seg" id="track-seg">
+                <button type="button" data-track="any" class="active">Any</button>
+                <button type="button" data-track="multi">Multi</button>
+                <button type="button" data-track="min">Min ≥</button>
+              </div>
+              <div class="tf-row" style="margin-top:6px;">
+                <input type="number" id="track-min" min="1" step="1" placeholder="Min points" disabled />
+              </div>
+            </div>
+            <div>
+              <label class="tf-label">Has sources</label>
+              <div class="seg" id="has-src-seg">
+                <button type="button" data-hassrc="any" class="active">Any</button>
+                <button type="button" data-hassrc="yes">Linked</button>
+                <button type="button" data-hassrc="no">None</button>
+              </div>
+            </div>
+            <p class="hint">Filters use latest geometry magnitude and full track length from EONET telemetry.</p>
           </div>
         </div>
 
@@ -953,10 +1122,29 @@ footer a{color:var(--text-dim);}
     <div class="panel" id="right-panel">
       <div class="tabbar">
         <button class="active" data-tab="list">Event Feed</button>
+        <button data-tab="stream">Live Stream</button>
         <button data-tab="detail">Detail</button>
       </div>
       <div class="panel-body" id="tab-list" style="display:flex; flex-direction:column;">
+        <div class="stream-banner" id="feed-stream-banner">
+          <span class="pulse-dot"></span>
+          <span id="feed-stream-label">Stream idle</span>
+          <span class="stream-meta">matched <b id="feed-stream-matched">0</b></span>
+        </div>
         <div class="loader"><div class="spinner"></div>Fetching EONET feed…</div>
+      </div>
+      <div class="panel-body" id="tab-stream" style="display:none; flex-direction:column;">
+        <div class="stream-banner live" id="stream-banner">
+          <span class="pulse-dot"></span>
+          <span>Filtered live arrivals</span>
+          <span class="stream-meta"><b id="stream-arrival-count">0</b> in session</span>
+        </div>
+        <div class="stream-list" id="stream-list">
+          <div class="stream-empty">Waiting for new events that match your filters…</div>
+        </div>
+        <p style="font-family:var(--font-display); font-size:9.5px; color:var(--text-dim); letter-spacing:0.5px; line-height:1.5; margin-top:4px;">
+          Polls EONET v3 on your auto-refresh interval. Only events passing search, category, source, and telemetry filters appear here.
+        </p>
       </div>
       <div class="panel-body" id="tab-detail" style="display:none;">
         <div class="detail-empty">SELECT AN EVENT<br>ON THE MAP OR FEED<br>TO VIEW TELEMETRY</div>
@@ -1044,6 +1232,13 @@ let state = {
   status: 'open',
   days: 60,
   search: '',
+  telem: {
+    magMode: 'any',   // any | has | min
+    magMin: null,
+    trackMode: 'any', // any | multi | min
+    trackMin: null,
+    hasSources: 'any', // any | yes | no
+  },
   selectedEventId: null,
   markers: {},
   imagery: { enabled:false, layerId: GIBS_LAYERS[0].id, date: null, opacity: 0.7 },
@@ -1052,6 +1247,9 @@ let state = {
   audioAlertsEnabled: true,
   autoRefreshMinutes: 5,
   autoRefreshTimer: null,
+  streamArrivals: [], // {id, title, category, at, color}
+  lastPollAt: null,
+  pollInFlight: false,
 };
 
 const DEFAULT_CENTER = [20, 10];
@@ -1307,9 +1505,135 @@ async function loadSources(){
   renderSourceList();
 }
 
-async function loadEvents(){
-  setApiStatus('loading','Fetching');
-  document.getElementById('tab-list').innerHTML = '<div class="loader"><div class="spinner"></div>Fetching EONET feed…</div>';
+function eventMagnitude(ev){
+  const g = latestGeometry(ev);
+  const v = g?.magnitudeValue;
+  return (v == null || isNaN(v)) ? null : Number(v);
+}
+
+/** Shared predicate for feed + live stream (search, category, source, telemetry). */
+function matchesFilters(ev){
+  const q = state.search.trim().toLowerCase();
+  const t = state.telem;
+  const cats = (ev.categories || []).map(c=>c.id);
+  if(state.activeCategories.size > 0 && !cats.some(c=>state.activeCategories.has(c))) return false;
+  if(state.activeSources.size > 0){
+    const srcIds = (ev.sources||[]).map(s=>s.id);
+    if(!srcIds.some(s=>state.activeSources.has(s))) return false;
+  }
+  if(q && !(ev.title || '').toLowerCase().includes(q)) return false;
+
+  const mag = eventMagnitude(ev);
+  if(t.magMode === 'has' && mag == null) return false;
+  if(t.magMode === 'min'){
+    if(mag == null) return false;
+    if(t.magMin != null && !isNaN(t.magMin) && mag < t.magMin) return false;
+  }
+
+  const trackLen = (ev.geometry || []).length;
+  if(t.trackMode === 'multi' && trackLen < 2) return false;
+  if(t.trackMode === 'min'){
+    const minPts = (t.trackMin != null && !isNaN(t.trackMin)) ? t.trackMin : 2;
+    if(trackLen < minPts) return false;
+  }
+
+  const nSrc = (ev.sources || []).length;
+  if(t.hasSources === 'yes' && nSrc === 0) return false;
+  if(t.hasSources === 'no' && nSrc > 0) return false;
+
+  return true;
+}
+
+function pushStreamArrivals(events){
+  const now = Date.now();
+  events.forEach(ev=>{
+    const cat = ev.categories?.[0];
+    state.streamArrivals.unshift({
+      id: ev.id,
+      title: ev.title,
+      category: cat?.title || '—',
+      color: colorFor(cat?.id),
+      at: now,
+    });
+  });
+  // keep last 50 arrivals
+  if(state.streamArrivals.length > 50) state.streamArrivals.length = 50;
+  renderStreamList();
+}
+
+function renderStreamList(){
+  const el = document.getElementById('stream-list');
+  const countEl = document.getElementById('stream-arrival-count');
+  if(countEl) countEl.textContent = String(state.streamArrivals.length);
+  if(!el) return;
+  if(state.streamArrivals.length === 0){
+    el.innerHTML = '<div class="stream-empty">Waiting for new events that match your filters…</div>';
+    return;
+  }
+  el.innerHTML = state.streamArrivals.map(item=>{
+    const ago = formatAgo(item.at);
+    return `<div class="stream-item" data-id="${item.id}" style="border-left-color:${item.color}">
+      <div class="st-title">${item.title}</div>
+      <div class="st-meta">
+        <span>${item.category}</span>
+        <span class="st-new">● ${ago}</span>
+      </div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.stream-item').forEach(node=>{
+    node.addEventListener('click', ()=>{
+      selectEvent(node.dataset.id);
+      openTelemetryModal(node.dataset.id);
+    });
+  });
+}
+
+function formatAgo(ts){
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if(s < 60) return s + 's ago';
+  if(s < 3600) return Math.floor(s/60) + 'm ago';
+  return Math.floor(s/3600) + 'h ago';
+}
+
+function updateStreamBanner(){
+  const banner = document.getElementById('feed-stream-banner');
+  const label = document.getElementById('feed-stream-label');
+  const matched = document.getElementById('feed-stream-matched');
+  if(!banner || !label) return;
+  const live = state.autoRefreshMinutes > 0 && !state.pollInFlight;
+  banner.classList.toggle('live', live && !state.isFirstLoad);
+  if(state.pollInFlight){
+    label.textContent = 'Polling EONET…';
+  }else if(state.autoRefreshMinutes > 0){
+    const mins = state.autoRefreshMinutes;
+    label.textContent = mins < 1 ? 'Live · every 30s' : `Live · every ${mins} min`;
+  }else{
+    label.textContent = 'Stream off';
+  }
+  if(matched) matched.textContent = String(state.filteredEvents.length);
+}
+
+async function loadEvents(opts={}){
+  const quiet = !!opts.quiet; // background poll: don't flash loaders
+  if(state.pollInFlight) return;
+  state.pollInFlight = true;
+  updateStreamBanner();
+
+  if(!quiet){
+    setApiStatus('loading','Fetching');
+    const list = document.getElementById('tab-list');
+    // preserve stream banner; only replace the feed area below it
+    const banner = document.getElementById('feed-stream-banner');
+    list.innerHTML = '';
+    if(banner) list.appendChild(banner);
+    const loader = document.createElement('div');
+    loader.className = 'loader';
+    loader.innerHTML = '<div class="spinner"></div>Fetching EONET feed…';
+    list.appendChild(loader);
+  }else{
+    setApiStatus('loading','Syncing');
+  }
+
   const params = new URLSearchParams();
   params.set('status', state.status);
   if(state.days && state.days > 0) params.set('days', state.days);
@@ -1318,18 +1642,22 @@ async function loadEvents(){
   try{
     const data = await fetchJSON(`${EONET_BASE}/events?${params.toString()}`);
     state.events = data.events || [];
+    state.lastPollAt = Date.now();
     setApiStatus('ok','Live');
     document.getElementById('last-updated').textContent =
       'LAST SYNC: ' + new Date().toLocaleTimeString();
 
-    // detect newly-appeared events relative to the previous fetch
     const currentIds = new Set(state.events.map(e=>e.id));
     if(!state.isFirstLoad){
-      const newOnes = state.events.filter(ev => !state.knownEventIds.has(ev.id));
-      if(newOnes.length > 0){
-        const label = newOnes.length === 1
-          ? `⚠ New event: ${newOnes[0].title}`
-          : `⚠ ${newOnes.length} new events detected`;
+      // Real-time stream filtering: only surface arrivals that pass active filters
+      const newMatching = state.events.filter(ev =>
+        !state.knownEventIds.has(ev.id) && matchesFilters(ev)
+      );
+      if(newMatching.length > 0){
+        pushStreamArrivals(newMatching);
+        const label = newMatching.length === 1
+          ? `⚡ Filtered: ${newMatching[0].title}`
+          : `⚡ ${newMatching.length} new events match filters`;
         showToast(label);
         playAlertTone();
       }
@@ -1340,35 +1668,36 @@ async function loadEvents(){
 
     applyFilters();
     renderCategoryCounts();
+    updateStreamBanner();
     if(wasFirst && state.filteredEvents.length > 0){
       setTimeout(fitMapToEvents, 200);
     }
   }catch(err){
     console.error(err);
     setApiStatus('err','Offline');
-    document.getElementById('tab-list').innerHTML =
-      `<div class="detail-empty" style="color:var(--red)">FEED ERROR<br><span style="font-size:10px; color:var(--text-dim)">${err.message}. Retry via refresh.</span></div>`;
+    if(!quiet){
+      const list = document.getElementById('tab-list');
+      const banner = document.getElementById('feed-stream-banner');
+      list.innerHTML = '';
+      if(banner) list.appendChild(banner);
+      list.insertAdjacentHTML('beforeend',
+        `<div class="detail-empty" style="color:var(--red)">FEED ERROR<br><span style="font-size:10px; color:var(--text-dim)">${err.message}. Retry via refresh.</span></div>`);
+    }
+  }finally{
+    state.pollInFlight = false;
+    updateStreamBanner();
   }
 }
 
 /* ---------- filtering ---------- */
 function applyFilters(){
-  const q = state.search.trim().toLowerCase();
-  state.filteredEvents = state.events.filter(ev=>{
-    const cats = ev.categories.map(c=>c.id);
-    if(!cats.some(c=>state.activeCategories.has(c))) return false;
-    if(state.activeSources.size > 0){
-      const srcIds = (ev.sources||[]).map(s=>s.id);
-      if(!srcIds.some(s=>state.activeSources.has(s))) return false;
-    }
-    if(q && !ev.title.toLowerCase().includes(q)) return false;
-    return true;
-  });
+  state.filteredEvents = state.events.filter(matchesFilters);
   renderMarkers();
   renderList();
   renderCategoryChart();
   renderTimeChart();
   updateHeaderStats();
+  updateStreamBanner();
 }
 
 /* ---------- rendering: category filter list ---------- */
@@ -1528,8 +1857,13 @@ function renderMarkers(){
 /* ---------- rendering: event feed list ---------- */
 function renderList(){
   const el = document.getElementById('tab-list');
+  // Keep the live stream banner pinned at the top of the feed
+  let banner = document.getElementById('feed-stream-banner');
+  const bannerHTML = banner ? banner.outerHTML : '';
+
   if(state.filteredEvents.length === 0){
-    el.innerHTML = '<div class="detail-empty">NO EVENTS MATCH<br>CURRENT FILTERS</div>';
+    el.innerHTML = bannerHTML + '<div class="detail-empty">NO EVENTS MATCH<br>CURRENT FILTERS</div>';
+    updateStreamBanner();
     return;
   }
   const sorted = [...state.filteredEvents].sort((a,b)=>{
@@ -1537,7 +1871,7 @@ function renderList(){
     const db = new Date(latestGeometry(b)?.date || 0);
     return db - da;
   });
-  el.innerHTML = sorted.map(ev=>{
+  el.innerHTML = bannerHTML + sorted.map(ev=>{
     const cat = ev.categories[0];
     const color = colorFor(cat?.id);
     const g = latestGeometry(ev);
@@ -1555,6 +1889,7 @@ function renderList(){
   el.querySelectorAll('.event-card').forEach(card=>{
     card.addEventListener('click', ()=> selectEvent(card.dataset.id));
   });
+  updateStreamBanner();
 }
 
 /* ---------- selection & detail panel ---------- */
@@ -1567,30 +1902,45 @@ function buildTelemetryHTML(ev, {forModal=false}={}){
     magnitude = `${g.magnitudeValue} ${g.magnitudeUnit || ''}`;
   }
 
-  const trackRows = (ev.geometry || []).slice().reverse().slice(0, 40).map((pt, i)=>{
+  const allPts = (ev.geometry || []).slice().reverse();
+  const trackRows = allPts.map((pt, i)=>{
     const when = pt.date ? new Date(pt.date).toLocaleString() : '—';
+    const whenRaw = pt.date || '';
     let loc = '—';
     if(pt.type === 'Point' && pt.coordinates){
       loc = pt.coordinates[1].toFixed(3) + ', ' + pt.coordinates[0].toFixed(3);
     }else if(pt.type){
       loc = pt.type;
     }
+    const magNum = (pt.magnitudeValue != null && !isNaN(pt.magnitudeValue)) ? Number(pt.magnitudeValue) : '';
     const mag = (pt.magnitudeValue != null)
       ? `${pt.magnitudeValue} ${pt.magnitudeUnit || ''}`.trim()
       : '—';
-    return `<tr>
+    return `<tr data-date="${whenRaw}" data-mag="${magNum}" data-loc="${loc}">
       <td>${when}</td>
       <td>${loc}</td>
       <td>${mag}</td>
     </tr>`;
   }).join('');
 
+  const trackFilterBar = forModal ? `
+      <div class="track-filter-bar" id="track-filter-bar">
+        <input type="search" id="track-search" placeholder="Filter by date or coords…" />
+        <label>Min mag <input type="number" id="track-mag-min" step="any" placeholder="—" /></label>
+        <div class="seg" id="track-mag-only">
+          <button type="button" data-only="all" class="active">All pts</button>
+          <button type="button" data-only="mag">With mag</button>
+        </div>
+        <span class="track-count-badge" id="track-count-badge">${allPts.length} shown</span>
+      </div>` : '';
+
   const trackBlock = (ev.geometry && ev.geometry.length)
-    ? `<div class="telemetry-track">
-        <div class="th">Geometry track (${ev.geometry.length} point${ev.geometry.length===1?'':'s'}${ev.geometry.length>40?' · showing latest 40':''})</div>
+    ? `<div class="telemetry-track" id="telemetry-track">
+        <div class="th">Geometry track (${ev.geometry.length} point${ev.geometry.length===1?'':'s'})</div>
+        ${trackFilterBar}
         <table>
           <thead><tr><th>Observed</th><th>Lat, Lon</th><th>Magnitude</th></tr></thead>
-          <tbody>${trackRows || '<tr><td colspan="3">No geometry</td></tr>'}</tbody>
+          <tbody id="track-tbody">${trackRows || '<tr><td colspan="3">No geometry</td></tr>'}</tbody>
         </table>
       </div>`
     : '';
@@ -1627,6 +1977,7 @@ function openTelemetryModal(id){
   document.getElementById('telemetry-sub').textContent =
     (cat?.title || 'Event') + ' · ' + (ev.closed ? 'Closed' : 'Open') + ' · ' + ev.id;
   document.getElementById('telemetry-body').innerHTML = buildTelemetryHTML(ev, {forModal:true});
+  wireTrackFilters();
 
   const backdrop = document.getElementById('telemetry-backdrop');
   backdrop.classList.add('open');
@@ -1641,6 +1992,47 @@ function openTelemetryModal(id){
   renderList();
 
   if(cat) suggestImageryForCategory(cat.id);
+}
+
+function wireTrackFilters(){
+  const tbody = document.getElementById('track-tbody');
+  const badge = document.getElementById('track-count-badge');
+  const search = document.getElementById('track-search');
+  const magMin = document.getElementById('track-mag-min');
+  const onlySeg = document.getElementById('track-mag-only');
+  if(!tbody) return;
+
+  let onlyMag = false;
+
+  function applyTrackFilter(){
+    const q = (search?.value || '').trim().toLowerCase();
+    const minV = magMin && magMin.value !== '' ? parseFloat(magMin.value) : null;
+    let shown = 0;
+    tbody.querySelectorAll('tr').forEach(row=>{
+      const date = (row.dataset.date || '').toLowerCase();
+      const loc = (row.dataset.loc || '').toLowerCase();
+      const magStr = row.dataset.mag;
+      const mag = magStr === '' ? null : parseFloat(magStr);
+      let ok = true;
+      if(q && !date.includes(q) && !loc.includes(q) && !(magStr && magStr.includes(q))) ok = false;
+      if(onlyMag && mag == null) ok = false;
+      if(minV != null && !isNaN(minV) && (mag == null || mag < minV)) ok = false;
+      row.style.display = ok ? '' : 'none';
+      if(ok) shown++;
+    });
+    if(badge) badge.textContent = shown + ' shown';
+  }
+
+  search?.addEventListener('input', applyTrackFilter);
+  magMin?.addEventListener('input', applyTrackFilter);
+  onlySeg?.addEventListener('click', e=>{
+    const btn = e.target.closest('button[data-only]');
+    if(!btn) return;
+    onlySeg.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    onlyMag = btn.dataset.only === 'mag';
+    applyTrackFilter();
+  });
 }
 
 function closeTelemetryModal(){
@@ -1695,8 +2087,11 @@ document.querySelectorAll('.tabbar button').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById('tab-list').style.display = btn.dataset.tab==='list' ? 'flex' : 'none';
-    document.getElementById('tab-detail').style.display = btn.dataset.tab==='detail' ? 'block' : 'none';
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-list').style.display = tab==='list' ? 'flex' : 'none';
+    document.getElementById('tab-stream').style.display = tab==='stream' ? 'flex' : 'none';
+    document.getElementById('tab-detail').style.display = tab==='detail' ? 'block' : 'none';
+    if(tab === 'stream') renderStreamList();
   });
 });
 
@@ -1787,6 +2182,64 @@ document.getElementById('search-input').addEventListener('input', e=>{
   applyFilters();
 });
 
+/* ---- telemetry filters ---- */
+function setSegActive(segId, btn){
+  document.querySelectorAll('#' + segId + ' button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+document.getElementById('mag-seg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-mag]');
+  if(!btn) return;
+  setSegActive('mag-seg', btn);
+  state.telem.magMode = btn.dataset.mag;
+  const input = document.getElementById('mag-min');
+  input.disabled = state.telem.magMode !== 'min';
+  if(state.telem.magMode === 'min' && input.value === '') input.focus();
+  applyFilters();
+});
+document.getElementById('mag-min').addEventListener('input', e=>{
+  const v = parseFloat(e.target.value);
+  state.telem.magMin = isNaN(v) ? null : v;
+  applyFilters();
+});
+
+document.getElementById('track-seg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-track]');
+  if(!btn) return;
+  setSegActive('track-seg', btn);
+  state.telem.trackMode = btn.dataset.track;
+  const input = document.getElementById('track-min');
+  input.disabled = state.telem.trackMode !== 'min';
+  if(state.telem.trackMode === 'min' && input.value === '') input.focus();
+  applyFilters();
+});
+document.getElementById('track-min').addEventListener('input', e=>{
+  const v = parseInt(e.target.value, 10);
+  state.telem.trackMin = isNaN(v) ? null : v;
+  applyFilters();
+});
+
+document.getElementById('has-src-seg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-hassrc]');
+  if(!btn) return;
+  setSegActive('has-src-seg', btn);
+  state.telem.hasSources = btn.dataset.hassrc;
+  applyFilters();
+});
+
+document.getElementById('telem-reset').addEventListener('click', ()=>{
+  state.telem = { magMode:'any', magMin:null, trackMode:'any', trackMin:null, hasSources:'any' };
+  document.querySelectorAll('#mag-seg button').forEach(b=>b.classList.toggle('active', b.dataset.mag==='any'));
+  document.querySelectorAll('#track-seg button').forEach(b=>b.classList.toggle('active', b.dataset.track==='any'));
+  document.querySelectorAll('#has-src-seg button').forEach(b=>b.classList.toggle('active', b.dataset.hassrc==='any'));
+  document.getElementById('mag-min').value = '';
+  document.getElementById('mag-min').disabled = true;
+  document.getElementById('track-min').value = '';
+  document.getElementById('track-min').disabled = true;
+  applyFilters();
+});
+
 document.getElementById('cat-toggle-all').addEventListener('click', ()=>{
   state.activeCategories = new Set(state.categories.map(c=>c.id));
   document.querySelectorAll('#category-list input').forEach(i=> i.checked = true);
@@ -1802,7 +2255,7 @@ document.getElementById('src-toggle-all').addEventListener('click', ()=>{
 document.getElementById('apply-btn').addEventListener('click', loadEvents);
 document.getElementById('refresh-btn').addEventListener('click', ()=>{
   document.getElementById('refresh-btn').classList.add('spinning');
-  loadEvents().finally(()=> document.getElementById('refresh-btn').classList.remove('spinning'));
+  loadEvents({quiet:false}).finally(()=> document.getElementById('refresh-btn').classList.remove('spinning'));
 });
 
 /* ---------- auto-refresh ---------- */
@@ -1810,13 +2263,22 @@ function setAutoRefresh(minutes){
   state.autoRefreshMinutes = minutes;
   if(state.autoRefreshTimer){ clearInterval(state.autoRefreshTimer); state.autoRefreshTimer = null; }
   if(minutes > 0){
-    state.autoRefreshTimer = setInterval(loadEvents, minutes * 60000);
+    // Quiet background polls — filters applied on every tick
+    state.autoRefreshTimer = setInterval(()=> loadEvents({quiet:true}), minutes * 60000);
   }
+  updateStreamBanner();
 }
 document.getElementById('autorefresh-select').addEventListener('change', e=>{
-  setAutoRefresh(parseInt(e.target.value, 10));
+  setAutoRefresh(parseFloat(e.target.value));
 });
 setAutoRefresh(state.autoRefreshMinutes);
+
+// Refresh relative timestamps in the live stream tab
+setInterval(()=>{
+  if(document.getElementById('tab-stream')?.style.display !== 'none'){
+    renderStreamList();
+  }
+}, 15000);
 
 /* ---------- audio alert toggle ---------- */
 function refreshAlertButton(){
