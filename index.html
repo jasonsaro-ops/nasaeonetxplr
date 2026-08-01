@@ -1102,7 +1102,8 @@ footer a{color:var(--text-dim);}
       <button class="icon-btn" id="alert-toggle-btn" title="Toggle audio alerts for new events">🔔</button>
       <div id="clock">— <b>—</b></div>
       <div class="status-pill loading" id="api-status"><span class="led"></span><span id="api-status-text">Connecting</span></div>
-      <button class="icon-btn" id="refresh-btn" title="Refresh data">⟳</button>
+      <button class="icon-btn" id="refresh-btn" title="Soft refresh (keeps map view + filters)">⟳</button>
+      <button class="icon-btn" id="reset-filters-btn" title="Reset all filters">⌫</button>
     </div>
   </header>
 
@@ -1180,6 +1181,32 @@ footer a{color:var(--text-dim);}
               <button class="btn" id="om-cape-btn" style="width:100%;">Sample CAPE at map center</button>
               <div class="wx-mini-stats" id="om-cape-readout">CAPE: —</div>
             </div>
+            <div class="wx-layer-toggles">
+              <label><input type="checkbox" id="layer-spc" /> SPC Day-1 categorical outlook</label>
+            </div>
+            <div class="wx-mini-stats">SPC polygons: <b id="spc-count">—</b></div>
+            <div>
+              <label class="tf-label">NWS Weather Forecast Office</label>
+              <select class="range-select" id="nws-office-select">
+                <option value="">All offices</option>
+              </select>
+            </div>
+            <div class="apply-row" style="margin-top:0;">
+              <button class="btn" id="nws-office-zoom" style="flex:1;">Zoom to office</button>
+            </div>
+            <div>
+              <label class="tf-label">Alert event filter</label>
+              <div class="seg" id="nws-event-seg">
+                <button type="button" data-ev="all" class="active">All</button>
+                <button type="button" data-ev="severe">Severe</button>
+                <button type="button" data-ev="flood">Flood</button>
+                <button type="button" data-ev="heat">Heat</button>
+              </div>
+            </div>
+            <div class="wx-layer-toggles">
+              <label><input type="checkbox" id="wx-audio-toggle" checked /> Weather alert tones</label>
+            </div>
+            <p class="hint">Soft refresh (⟳) reloads feeds without resetting map view or filters. ⌫ resets filters only.</p>
             <div>
               <label class="tf-label">NWS severity</label>
               <div class="seg" id="nws-sev-seg">
@@ -1250,6 +1277,7 @@ footer a{color:var(--text-dim);}
 
         <div class="apply-row">
           <button class="btn primary" id="apply-btn" style="flex:1;">Apply Filters</button>
+          <button class="btn" id="reset-all-filters-btn" title="Reset all filters">Reset</button>
         </div>
       </div>
     </div>
@@ -1435,7 +1463,7 @@ let state = {
   streamArrivals: [], // {id, title, category, at, color}
   lastPollAt: null,
   pollInFlight: false,
-  layers: { eonet: true, nws: false, swdi: false, nexrad: false, usgs: false, gdacs: false },
+  layers: { eonet: true, nws: false, swdi: false, nexrad: false, usgs: false, gdacs: false, spc: false },
   nws: {
     features: [],
     severity: 'all', // all | Severe | Extreme
@@ -1452,6 +1480,10 @@ let state = {
   gdacs: { features: [], loading: false },
   openMeteo: { cape: null, at: null },
   nexradProduct: 'nexrad-n0q-900913',
+  spc: { features: [], product: 'cat', loading: false },
+  nwsOffice: null, // selected WFO code e.g. PHI
+  knownNwsAlertIds: new Set(),
+  weatherAudioEnabled: true,
 };
 
 const DEFAULT_CENTER = [20, 10];
@@ -1503,7 +1535,9 @@ const nwsLayer = L.layerGroup();
 const swdiLayer = L.layerGroup();
 const usgsLayer = L.layerGroup();
 const gdacsLayer = L.layerGroup();
+const spcLayer = L.layerGroup();
 let nexradTileLayer = null;
+window.__layersReady = true;
 
 function setBasemap(key){
   const def = BASEMAPS[key] || BASEMAPS.streets;
@@ -1515,15 +1549,29 @@ function setBasemap(key){
     attribution: def.attribution,
     errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
   }).addTo(map);
-  // Keep overlays above basemap without calling bringToFront on layerGroup
-  // (safer across Leaflet builds). Re-add marker layer to top of stack.
-  if(imageryTileLayer && map.hasLayer(imageryTileLayer)){
-    imageryTileLayer.bringToFront();
-  }
-  if(map.hasLayer(markerLayer)){
-    markerLayer.remove();
-    markerLayer.addTo(map);
-  }
+  restackMapLayers();
+}
+
+function restackMapLayers(){
+  // Bottom → top: basemap, NEXRAD, GIBS, vector overlays, EONET markers
+  try{
+    if(window.__layersReady && nexradTileLayer && state.layers && state.layers.nexrad){
+      try{ map.removeLayer(nexradTileLayer); }catch(_){}
+      nexradTileLayer.addTo(map);
+    }
+    if(imageryTileLayer && map.hasLayer(imageryTileLayer)){
+      try{ imageryTileLayer.bringToFront(); }catch(_){}
+    }
+    if(window.__layersReady){
+      [swdiLayer, nwsLayer, gdacsLayer, usgsLayer, spcLayer, markerLayer].forEach(ly=>{
+        if(ly && map.hasLayer(ly)){
+          try{ ly.remove(); ly.addTo(map); }catch(_){}
+        }
+      });
+    }else if(markerLayer && map.hasLayer(markerLayer)){
+      try{ markerLayer.remove(); markerLayer.addTo(map); }catch(_){}
+    }
+  }catch(e){ console.warn('restack', e); }
 }
 setBasemap('streets');
 
@@ -2718,10 +2766,7 @@ document.getElementById('src-toggle-all').addEventListener('click', ()=>{
 });
 
 document.getElementById('apply-btn').addEventListener('click', loadEvents);
-document.getElementById('refresh-btn').addEventListener('click', ()=>{
-  document.getElementById('refresh-btn').classList.add('spinning');
-  loadEvents({quiet:false}).finally(()=> document.getElementById('refresh-btn').classList.remove('spinning'));
-});
+/* refresh-btn handled by softRefresh in wireWeatherControls */
 
 /* ---------- auto-refresh ---------- */
 function setAutoRefresh(minutes){
@@ -2824,17 +2869,7 @@ function polygonCentroid(geom){
   return [lat/n, lon/n];
 }
 
-function matchesNwsFilters(props){
-  const sev = state.nws.severity;
-  if(sev === 'Extreme' && props.severity !== 'Extreme') return false;
-  if(sev === 'Severe' && !['Severe','Extreme'].includes(props.severity)) return false;
-  const q = (state.nws.search || '').trim().toLowerCase();
-  if(q){
-    const blob = `${props.event||''} ${props.headline||''} ${props.areaDesc||''}`.toLowerCase();
-    if(!blob.includes(q)) return false;
-  }
-  return true;
-}
+
 
 async function loadNwsAlerts(){
   state.nws.loading = true;
@@ -2846,7 +2881,28 @@ async function loadNwsAlerts(){
     });
     if(!res.ok) throw new Error('NWS HTTP ' + res.status);
     const data = await res.json();
-    state.nws.features = data.features || [];
+    const features = data.features || [];
+    // Audible: new alerts matching filters
+    const prev = state.knownNwsAlertIds;
+    if(prev.size > 0){
+      const newcomers = features.filter(f=>{
+        const id = f.properties?.id;
+        return id && !prev.has(id) && matchesNwsFilters(f.properties||{});
+      });
+      if(newcomers.length){
+        // Play strongest tone among newcomers
+        let rank = { info:0, watch:1, warning:2, extreme:3 };
+        let best = 'info';
+        newcomers.forEach(f=>{
+          const k = classifyAlertTone(f.properties||{});
+          if(rank[k] > rank[best]) best = k;
+        });
+        playWeatherTone(best);
+        showToast(`NWS: ${newcomers.length} new alert(s) · ${best}`);
+      }
+    }
+    state.knownNwsAlertIds = new Set(features.map(f=>f.properties?.id).filter(Boolean));
+    state.nws.features = features;
     renderNwsLayer();
   }catch(err){
     console.error('NWS load failed', err);
@@ -3052,6 +3108,8 @@ function updateWxCounts(){
   if(swdiEl) swdiEl.textContent = state.swdi.loading ? '…' : String(state.swdi.records.length || 0);
   if(usgsEl) usgsEl.textContent = state.usgs.loading ? '…' : String(state.usgs.features.length || 0);
   if(gdacsEl) gdacsEl.textContent = state.gdacs.loading ? '…' : String(state.gdacs.features.length || 0);
+  const spcEl = document.getElementById('spc-count');
+  if(spcEl) spcEl.textContent = state.spc.loading ? '…' : String(state.spc.features.length || 0);
 }
 
 /* ---- NEXRAD (Iowa Environmental Mesonet tiles) ---- */
@@ -3060,25 +3118,30 @@ const NEXRAD_TILE = (product) =>
 
 function setNexradLayer(on){
   state.layers.nexrad = on;
-  if(nexradTileLayer){
-    map.removeLayer(nexradTileLayer);
-    nexradTileLayer = null;
-  }
-  if(!on) return;
   const product = document.getElementById('nexrad-product')?.value || state.nexradProduct;
   state.nexradProduct = product;
+  if(!on){
+    if(nexradTileLayer){
+      try{ map.removeLayer(nexradTileLayer); }catch(_){}
+      nexradTileLayer = null;
+    }
+    return;
+  }
+  // Reuse layer when only product changes — smoother than full tear-down
+  if(nexradTileLayer){
+    try{ map.removeLayer(nexradTileLayer); }catch(_){}
+  }
   nexradTileLayer = L.tileLayer(NEXRAD_TILE(product), {
-    opacity: 0.65,
+    opacity: 0.7,
     maxZoom: 12,
+    maxNativeZoom: 10,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    keepBuffer: 2,
     attribution: 'Radar: Iowa State IEM / NEXRAD',
   });
   nexradTileLayer.addTo(map);
-  // keep event markers above radar
-  if(map.hasLayer(markerLayer)){ markerLayer.remove(); markerLayer.addTo(map); }
-  if(map.hasLayer(nwsLayer)){ nwsLayer.remove(); nwsLayer.addTo(map); }
-  if(map.hasLayer(usgsLayer)){ usgsLayer.remove(); usgsLayer.addTo(map); }
-  if(map.hasLayer(gdacsLayer)){ gdacsLayer.remove(); gdacsLayer.addTo(map); }
-  if(map.hasLayer(swdiLayer)){ swdiLayer.remove(); swdiLayer.addTo(map); }
+  restackMapLayers();
 }
 
 /* ---- USGS earthquakes ---- */
@@ -3337,6 +3400,332 @@ function setEonetLayerVisible(on){
   }
 }
 
+
+/* ---- Weather alert audio (different kHz by severity) ---- */
+function playWeatherTone(kind){
+  // kind: watch | warning | extreme | info
+  if(!state.weatherAudioEnabled) return;
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+    // Two- and three-tone patterns at distinct kHz bands
+    const schemes = {
+      info:     { freqs: [660], dur: 0.12, gap: 0.08 },
+      watch:    { freqs: [880, 660], dur: 0.14, gap: 0.1 },           // 0.88 / 0.66 kHz
+      warning:  { freqs: [1040, 780, 1040], dur: 0.12, gap: 0.08 },  // ~1.0 kHz pattern
+      extreme:  { freqs: [1240, 980, 1240], dur: 0.16, gap: 0.07 },  // ~1.2 kHz urgent
+    };
+    const sch = schemes[kind] || schemes.info;
+    sch.freqs.forEach((freq, i)=>{
+      const t0 = now + i * (sch.dur + sch.gap);
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t0);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + sch.dur);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t0);
+      osc.stop(t0 + sch.dur + 0.02);
+    });
+  }catch(e){ console.warn('Weather tone failed', e); }
+}
+
+function classifyAlertTone(props){
+  const event = (props.event || '').toLowerCase();
+  const sev = (props.severity || '').toLowerCase();
+  const urgency = (props.urgency || '').toLowerCase();
+  if(sev === 'extreme' || urgency === 'immediate' || /warning/.test(event) && /tornado|flash flood|hurricane|tsunami/.test(event)){
+    return 'extreme';
+  }
+  if(sev === 'severe' || /warning/.test(event)) return 'warning';
+  if(/watch/.test(event) || sev === 'moderate') return 'watch';
+  return 'info';
+}
+
+/* ---- Curated NWS WFOs (code, name, lat, lon) ---- */
+const NWS_WFOS = [
+  {c:'BOX',n:'Boston / Norton MA',lat:41.96,lon:-71.18},
+  {c:'OKX',n:'New York NY',lat:40.77,lon:-73.0},
+  {c:'PHI',n:'Philadelphia PA',lat:39.87,lon:-75.23},
+  {c:'CTP',n:'State College PA',lat:40.79,lon:-77.86},
+  {c:'BGM',n:'Binghamton NY',lat:42.21,lon:-75.98},
+  {c:'BUF',n:'Buffalo NY',lat:42.94,lon:-78.72},
+  {c:'ALY',n:'Albany NY',lat:42.75,lon:-73.8},
+  {c:'BTV',n:'Burlington VT',lat:44.47,lon:-73.15},
+  {c:'GYX',n:'Gray / Portland ME',lat:43.89,lon:-70.26},
+  {c:'CAR',n:'Caribou ME',lat:46.87,lon:-68.02},
+  {c:'LWX',n:'Baltimore / Washington',lat:38.98,lon:-77.48},
+  {c:'AKQ',n:'Wakefield VA',lat:36.98,lon:-77.0},
+  {c:'RNK',n:'Blacksburg VA',lat:37.21,lon:-80.41},
+  {c:'RLX',n:'Charleston WV',lat:38.38,lon:-81.59},
+  {c:'PBZ',n:'Pittsburgh PA',lat:40.53,lon:-80.23},
+  {c:'CLE',n:'Cleveland OH',lat:41.41,lon:-81.86},
+  {c:'ILN',n:'Wilmington OH',lat:39.42,lon:-83.82},
+  {c:'DTX',n:'Detroit MI',lat:42.7,lon:-83.47},
+  {c:'GRR',n:'Grand Rapids MI',lat:42.89,lon:-85.54},
+  {c:'APX',n:'Gaylord MI',lat:44.91,lon:-84.72},
+  {c:'MQT',n:'Marquette MI',lat:46.53,lon:-87.55},
+  {c:'IND',n:'Indianapolis IN',lat:39.71,lon:-86.28},
+  {c:'IWX',n:'Northern Indiana',lat:41.36,lon:-85.13},
+  {c:'LOT',n:'Chicago IL',lat:41.6,lon:-88.1},
+  {c:'ILX',n:'Central Illinois',lat:40.15,lon:-89.34},
+  {c:'DVN',n:'Quad Cities IA/IL',lat:41.61,lon:-90.58},
+  {c:'DMX',n:'Des Moines IA',lat:41.73,lon:-93.72},
+  {c:'MPX',n:'Twin Cities MN',lat:44.85,lon:-93.57},
+  {c:'DLH',n:'Duluth MN',lat:46.84,lon:-92.21},
+  {c:'FGF',n:'Grand Forks ND',lat:47.95,lon:-97.33},
+  {c:'BIS',n:'Bismarck ND',lat:46.77,lon:-100.75},
+  {c:'ABR',n:'Aberdeen SD',lat:45.45,lon:-98.42},
+  {c:'FSD',n:'Sioux Falls SD',lat:43.59,lon:-96.73},
+  {c:'OAX',n:'Omaha NE',lat:41.32,lon:-96.01},
+  {c:'GID',n:'Hastings NE',lat:40.64,lon:-98.38},
+  {c:'LBF',n:'North Platte NE',lat:41.12,lon:-100.68},
+  {c:'TOP',n:'Topeka KS',lat:39.07,lon:-95.63},
+  {c:'ICT',n:'Wichita KS',lat:37.65,lon:-97.44},
+  {c:'DDC',n:'Dodge City KS',lat:37.76,lon:-99.97},
+  {c:'GLD',n:'Goodland KS',lat:39.37,lon:-101.7},
+  {c:'EAX',n:'Kansas City/Pleasant Hill',lat:38.81,lon:-94.27},
+  {c:'SGF',n:'Springfield MO',lat:37.24,lon:-93.4},
+  {c:'LSX',n:'St Louis MO',lat:38.7,lon:-90.68},
+  {c:'PAH',n:'Paducah KY',lat:37.07,lon:-88.77},
+  {c:'LMK',n:'Louisville KY',lat:38.12,lon:-85.74},
+  {c:'JKL',n:'Jackson KY',lat:37.59,lon:-83.31},
+  {c:'MEG',n:'Memphis TN',lat:35.13,lon:-89.98},
+  {c:'OHX',n:'Nashville TN',lat:36.25,lon:-86.57},
+  {c:'MRX',n:'Morristown TN',lat:36.17,lon:-83.4},
+  {c:'FFC',n:'Atlanta GA',lat:33.36,lon:-84.57},
+  {c:'CHS',n:'Charleston SC',lat:32.9,lon:-80.03},
+  {c:'CAE',n:'Columbia SC',lat:33.95,lon:-81.12},
+  {c:'GSP',n:'Greenville-Spartanburg SC',lat:34.88,lon:-82.22},
+  {c:'ILM',n:'Wilmington NC',lat:34.27,lon:-77.91},
+  {c:'RAH',n:'Raleigh NC',lat:35.87,lon:-78.79},
+  {c:'MHX',n:'Newport/Morehead City NC',lat:34.78,lon:-76.88},
+  {c:'RNK',n:'Blacksburg VA',lat:37.21,lon:-80.41},
+  {c:'JAX',n:'Jacksonville FL',lat:30.48,lon:-81.7},
+  {c:'MLB',n:'Melbourne FL',lat:28.11,lon:-80.65},
+  {c:'MFL',n:'Miami FL',lat:25.75,lon:-80.38},
+  {c:'KEY',n:'Key West FL',lat:24.56,lon:-81.75},
+  {c:'TBW',n:'Tampa Bay FL',lat:27.71,lon:-82.4},
+  {c:'TAE',n:'Tallahassee FL',lat:30.4,lon:-84.35},
+  {c:'MOB',n:'Mobile AL',lat:30.69,lon:-88.25},
+  {c:'BMX',n:'Birmingham AL',lat:33.17,lon:-86.77},
+  {c:'HUN',n:'Huntsville AL',lat:34.64,lon:-86.77},
+  {c:'JAN',n:'Jackson MS',lat:32.32,lon:-90.08},
+  {c:'LIX',n:'New Orleans LA',lat:30.04,lon:-89.83},
+  {c:'LCH',n:'Lake Charles LA',lat:30.13,lon:-93.22},
+  {c:'SHV',n:'Shreveport LA',lat:32.45,lon:-93.84},
+  {c:'LZK',n:'Little Rock AR',lat:34.84,lon:-92.26},
+  {c:'TSA',n:'Tulsa OK',lat:36.16,lon:-95.84},
+  {c:'OUN',n:'Norman OK',lat:35.24,lon:-97.46},
+  {c:'AMA',n:'Amarillo TX',lat:35.23,lon:-101.7},
+  {c:'LUB',n:'Lubbock TX',lat:33.58,lon:-101.88},
+  {c:'MAF',n:'Midland/Odessa TX',lat:31.94,lon:-102.2},
+  {c:'SJT',n:'San Angelo TX',lat:31.36,lon:-100.49},
+  {c:'EWX',n:'Austin/San Antonio TX',lat:29.71,lon:-98.03},
+  {c:'CRP',n:'Corpus Christi TX',lat:27.77,lon:-97.51},
+  {c:'BRO',n:'Brownsville TX',lat:25.91,lon:-97.42},
+  {c:'HGX',n:'Houston/Galveston TX',lat:29.47,lon:-95.08},
+  {c:'FWD',n:'Fort Worth TX',lat:32.83,lon:-97.3},
+  {c:'EPZ',n:'El Paso TX',lat:31.87,lon:-106.7},
+  {c:'ABQ',n:'Albuquerque NM',lat:35.05,lon:-106.62},
+  {c:'FGZ',n:'Flagstaff AZ',lat:35.23,lon:-111.82},
+  {c:'TWC',n:'Tucson AZ',lat:32.23,lon:-110.96},
+  {c:'PSR',n:'Phoenix AZ',lat:33.44,lon:-112.02},
+  {c:'VEF',n:'Las Vegas NV',lat:36.09,lon:-115.18},
+  {c:'REV',n:'Reno NV',lat:39.59,lon:-119.86},
+  {c:'SLC',n:'Salt Lake City UT',lat:40.77,lon:-111.95},
+  {c:'GJT',n:'Grand Junction CO',lat:39.12,lon:-108.53},
+  {c:'PUB',n:'Pueblo CO',lat:38.29,lon:-104.5},
+  {c:'BOU',n:'Denver/Boulder CO',lat:40.0,lon:-105.3},
+  {c:'CYS',n:'Cheyenne WY',lat:41.15,lon:-104.81},
+  {c:'RIW',n:'Riverton WY',lat:43.06,lon:-108.48},
+  {c:'TFX',n:'Great Falls MT',lat:47.46,lon:-111.38},
+  {c:'MSO',n:'Missoula MT',lat:46.92,lon:-114.09},
+  {c:'BYZ',n:'Billings MT',lat:45.8,lon:-108.55},
+  {c:'PIH',n:'Pocatello ID',lat:42.92,lon:-112.57},
+  {c:'BOI',n:'Boise ID',lat:43.57,lon:-116.22},
+  {c:'OTX',n:'Spokane WA',lat:47.68,lon:-117.63},
+  {c:'SEW',n:'Seattle WA',lat:47.45,lon:-122.3},
+  {c:'PQR',n:'Portland OR',lat:45.56,lon:-122.54},
+  {c:'MFR',n:'Medford OR',lat:42.37,lon:-122.87},
+  {c:'PDT',n:'Pendleton OR',lat:45.7,lon:-118.85},
+  {c:'MTR',n:'San Francisco CA',lat:37.67,lon:-122.22},
+  {c:'MFT',n:'San Joaquin Valley',lat:36.6,lon:-119.7},
+  {c:'HNX',n:'Hanford CA',lat:36.31,lon:-119.63},
+  {c:'LOX',n:'Los Angeles CA',lat:34.2,lon:-118.53},
+  {c:'SGX',n:'San Diego CA',lat:32.83,lon:-117.13},
+  {c:'STO',n:'Sacramento CA',lat:38.5,lon:-121.4},
+  {c:'EKA',n:'Eureka CA',lat:40.8,lon:-124.16},
+  {c:'AFG',n:'Fairbanks AK',lat:64.84,lon:-147.75},
+  {c:'AJK',n:'Juneau AK',lat:58.37,lon:-134.58},
+  {c:'AFC',n:'Anchorage AK',lat:61.17,lon:-150.0},
+  {c:'HFO',n:'Honolulu HI',lat:21.3,lon:-157.82},
+  {c:'GUM',n:'Guam',lat:13.48,lon:144.8},
+  {c:'SJU',n:'San Juan PR',lat:18.43,lon:-66.0},
+];
+
+function populateNwsOfficeSelect(){
+  const sel = document.getElementById('nws-office-select');
+  if(!sel) return;
+  const opts = NWS_WFOS.slice().sort((a,b)=>a.n.localeCompare(b.n))
+    .map(o=>`<option value="${o.c}">${o.c} — ${o.n}</option>`).join('');
+  sel.innerHTML = '<option value="">All offices</option>' + opts;
+}
+
+function matchesNwsFilters(props){
+  const sev = state.nws.severity;
+  if(sev === 'Extreme' && props.severity !== 'Extreme') return false;
+  if(sev === 'Severe' && !['Severe','Extreme'].includes(props.severity)) return false;
+  const q = (state.nws.search || '').trim().toLowerCase();
+  if(q){
+    const blob = `${props.event||''} ${props.headline||''} ${props.areaDesc||''}`.toLowerCase();
+    if(!blob.includes(q)) return false;
+  }
+  // WFO filter — match office code in id/sender/senderName
+  if(state.nwsOffice){
+    const code = state.nwsOffice.toUpperCase();
+    const blob = `${props.id||''} ${props.sender||''} ${props.senderName||''}`.toUpperCase();
+    if(!blob.includes(code)) return false;
+  }
+  // Event category quick filters
+  const evf = state.nws.eventFilter || 'all';
+  if(evf !== 'all'){
+    const ev = (props.event||'').toLowerCase();
+    if(evf === 'severe' && !/thunderstorm|tornado|severe/.test(ev)) return false;
+    if(evf === 'flood' && !/flood|hydrologic/.test(ev)) return false;
+    if(evf === 'heat' && !/heat|excessive heat/.test(ev)) return false;
+  }
+  return true;
+}
+
+/* ---- SPC Day-1 outlook ---- */
+async function loadSpcOutlook(){
+  state.spc.loading = true;
+  updateWxCounts();
+  try{
+    const url = 'https://www.spc.noaa.gov/products/outlook/day1otlk_cat.lyr.geojson';
+    const res = await fetch(url, { headers:{ 'Accept':'application/geo+json' }, cache:'no-cache' });
+    if(!res.ok) throw new Error('SPC HTTP ' + res.status);
+    const data = await res.json();
+    state.spc.features = data.features || [];
+    renderSpcLayer();
+  }catch(err){
+    console.error(err);
+    showToast('SPC outlook failed: ' + err.message);
+  }finally{
+    state.spc.loading = false;
+    updateWxCounts();
+  }
+}
+
+function renderSpcLayer(){
+  spcLayer.clearLayers();
+  if(!state.layers.spc){
+    if(map.hasLayer(spcLayer)) map.removeLayer(spcLayer);
+    updateWxCounts();
+    return;
+  }
+  if(!map.hasLayer(spcLayer)) spcLayer.addTo(map);
+  state.spc.features.forEach(f=>{
+    const p = f.properties || {};
+    const fill = p.fill || '#55BB55';
+    const stroke = p.stroke || fill;
+    const layer = L.geoJSON(f, {
+      style: ()=>({ color: stroke, weight: 1.5, fillColor: fill, fillOpacity: 0.25, opacity: 0.8 }),
+    });
+    layer.bindTooltip(p.LABEL2 || p.LABEL || 'SPC outlook', { sticky:true });
+    layer.on('click', ()=>{
+      document.getElementById('telemetry-title').textContent = p.LABEL2 || p.LABEL || 'SPC Day-1';
+      document.getElementById('telemetry-sub').textContent = `Valid ${p.VALID_ISO || p.VALID || '—'} · ${p.FORECASTER || ''}`;
+      document.getElementById('telemetry-body').innerHTML = `
+        <span class="meta-tag" style="background:${fill}55;color:${stroke}">${p.LABEL || 'SPC'}</span>
+        <div class="meta-kv"><span class="k">Risk</span><span class="v">${p.LABEL2 || p.LABEL || '—'}</span></div>
+        <div class="meta-kv"><span class="k">DN</span><span class="v">${p.DN ?? '—'}</span></div>
+        <div class="meta-kv"><span class="k">Issue</span><span class="v">${p.ISSUE_ISO || p.ISSUE || '—'}</span></div>
+        <div class="meta-kv"><span class="k">Valid</span><span class="v">${p.VALID_ISO || p.VALID || '—'}</span></div>
+        <div class="meta-kv"><span class="k">Expire</span><span class="v">${p.EXPIRE_ISO || p.EXPIRE || '—'}</span></div>
+        <div class="meta-kv"><span class="k">Forecaster</span><span class="v">${p.FORECASTER || '—'}</span></div>
+        <div class="detail-links">
+          <a href="https://www.spc.noaa.gov/products/outlook/day1otlk.html" target="_blank" rel="noopener">↗ SPC Day-1 outlook</a>
+        </div>`;
+      document.getElementById('telemetry-backdrop').classList.add('open');
+    });
+    layer.addTo(spcLayer);
+  });
+  updateWxCounts();
+}
+
+/** Soft refresh: reload data feeds without resetting map view or filters */
+async function softRefresh(){
+  const btn = document.getElementById('refresh-btn');
+  btn?.classList.add('spinning');
+  showToast('Refreshing feeds…');
+  try{
+    const tasks = [loadEvents({ quiet:true })];
+    if(state.layers.nws || state.nws.features.length) tasks.push(loadNwsAlerts());
+    if(state.layers.usgs || state.usgs.features.length) tasks.push(loadUsgsQuakes());
+    if(state.layers.gdacs || state.gdacs.features.length) tasks.push(loadGdacs());
+    if(state.layers.spc || state.spc.features.length) tasks.push(loadSpcOutlook());
+    // NEXRAD: nudge tile refresh without destroying layer
+    if(state.layers.nexrad && nexradTileLayer){
+      nexradTileLayer.redraw();
+    }
+    await Promise.all(tasks);
+    showToast('Feeds updated');
+  }catch(e){
+    showToast('Refresh error: ' + e.message);
+  }finally{
+    btn?.classList.remove('spinning');
+  }
+}
+
+function resetAllFilters(){
+  // Status / days / search
+  state.status = 'open';
+  state.days = 60;
+  state.search = '';
+  document.querySelectorAll('#status-seg button').forEach(b=>b.classList.toggle('active', b.dataset.status==='open'));
+  const daysSel = document.getElementById('days-select');
+  if(daysSel) daysSel.value = '60';
+  const search = document.getElementById('search-input');
+  if(search) search.value = '';
+
+  // Categories + sources
+  state.activeCategories = new Set(state.categories.map(c=>c.id));
+  document.querySelectorAll('#category-list input').forEach(i=> i.checked = true);
+  state.activeSources = new Set();
+  document.querySelectorAll('#source-list input').forEach(i=> i.checked = false);
+
+  // Telemetry
+  state.telem = { magMode:'any', magMin:null, trackMode:'any', trackMin:null, hasSources:'any' };
+  document.querySelectorAll('#mag-seg button').forEach(b=>b.classList.toggle('active', b.dataset.mag==='any'));
+  document.querySelectorAll('#track-seg button').forEach(b=>b.classList.toggle('active', b.dataset.track==='any'));
+  document.querySelectorAll('#has-src-seg button').forEach(b=>b.classList.toggle('active', b.dataset.hassrc==='any'));
+  const magMin = document.getElementById('mag-min');
+  const trackMin = document.getElementById('track-min');
+  if(magMin){ magMin.value=''; magMin.disabled=true; }
+  if(trackMin){ trackMin.value=''; trackMin.disabled=true; }
+
+  // NWS filters
+  state.nws.severity = 'all';
+  state.nws.search = '';
+  state.nws.eventFilter = 'all';
+  state.nwsOffice = null;
+  document.querySelectorAll('#nws-sev-seg button').forEach(b=>b.classList.toggle('active', b.dataset.sev==='all'));
+  document.querySelectorAll('#nws-event-seg button').forEach(b=>b.classList.toggle('active', b.dataset.ev==='all'));
+  const nwsSearch = document.getElementById('nws-search');
+  if(nwsSearch) nwsSearch.value = '';
+  const officeSel = document.getElementById('nws-office-select');
+  if(officeSel) officeSel.value = '';
+
+  applyFilters();
+  renderNwsLayer();
+  showToast('All filters reset');
+}
+
+
 function wireWeatherControls(){
   // default SWDI date = yesterday UTC
   const d = new Date();
@@ -3392,6 +3781,48 @@ function wireWeatherControls(){
     state.swdi.dataset = e.target.value;
   });
   document.getElementById('om-cape-btn').addEventListener('click', sampleOpenMeteoCape);
+
+  populateNwsOfficeSelect();
+  document.getElementById('layer-spc')?.addEventListener('change', e=>{
+    state.layers.spc = e.target.checked;
+    if(state.layers.spc && state.spc.features.length === 0) loadSpcOutlook();
+    else renderSpcLayer();
+  });
+  document.getElementById('nws-office-select')?.addEventListener('change', e=>{
+    state.nwsOffice = e.target.value || null;
+    renderNwsLayer();
+  });
+  document.getElementById('nws-office-zoom')?.addEventListener('click', ()=>{
+    const code = document.getElementById('nws-office-select')?.value;
+    const wfo = NWS_WFOS.find(w => w.c === code);
+    if(!wfo){ showToast('Select an NWS office first'); return; }
+    map.flyTo([wfo.lat, wfo.lon], 7, { duration: 0.8 });
+    // Auto-enable NWS layer for office context
+    if(!state.layers.nws){
+      document.getElementById('layer-nws').checked = true;
+      state.layers.nws = true;
+      loadNwsAlerts();
+    } else renderNwsLayer();
+  });
+  document.getElementById('nws-event-seg')?.addEventListener('click', e=>{
+    const btn = e.target.closest('button[data-ev]');
+    if(!btn) return;
+    document.querySelectorAll('#nws-event-seg button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.nws.eventFilter = btn.dataset.ev;
+    renderNwsLayer();
+  });
+  document.getElementById('wx-audio-toggle')?.addEventListener('change', e=>{
+    state.weatherAudioEnabled = e.target.checked;
+    if(state.weatherAudioEnabled) playWeatherTone('watch');
+  });
+  document.getElementById('reset-filters-btn')?.addEventListener('click', resetAllFilters);
+  document.getElementById('reset-all-filters-btn')?.addEventListener('click', resetAllFilters);
+  // Soft refresh replaces hard reload behavior of the refresh button
+  document.getElementById('refresh-btn')?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    softRefresh();
+  });
 }
 
 
