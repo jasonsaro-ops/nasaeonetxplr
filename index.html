@@ -1158,10 +1158,27 @@ footer a{color:var(--text-dim);}
             <div class="wx-layer-toggles">
               <label><input type="checkbox" id="layer-eonet" checked /> EONET natural events</label>
               <label><input type="checkbox" id="layer-nws" /> NWS active alerts</label>
+              <label><input type="checkbox" id="layer-nexrad" /> NEXRAD radar imagery</label>
+              <label><input type="checkbox" id="layer-usgs" /> USGS earthquakes (day)</label>
+              <label><input type="checkbox" id="layer-gdacs" /> GDACS global hazards</label>
               <label><input type="checkbox" id="layer-swdi" /> NCEI SWDI (on demand)</label>
             </div>
             <div class="wx-mini-stats">
-              NWS <b id="nws-count">—</b> · SWDI <b id="swdi-count">—</b>
+              NWS <b id="nws-count">—</b> · USGS <b id="usgs-count">—</b> · GDACS <b id="gdacs-count">—</b> · SWDI <b id="swdi-count">—</b>
+            </div>
+            <div>
+              <label class="tf-label">NEXRAD product</label>
+              <select class="range-select" id="nexrad-product">
+                <option value="nexrad-n0q-900913" selected>Base Reflectivity (N0Q)</option>
+                <option value="nexrad-eet-900913">Echo Tops (EET)</option>
+                <option value="q2-n1p-900913">MRMS 1h precip</option>
+                <option value="q2-p24h-900913">MRMS 24h precip</option>
+              </select>
+            </div>
+            <div>
+              <label class="tf-label">Open-Meteo CAPE (map center)</label>
+              <button class="btn" id="om-cape-btn" style="width:100%;">Sample CAPE at map center</button>
+              <div class="wx-mini-stats" id="om-cape-readout">CAPE: —</div>
             </div>
             <div>
               <label class="tf-label">NWS severity</label>
@@ -1331,7 +1348,7 @@ footer a{color:var(--text-dim);}
   </div>
 
   <footer>
-    <span>DATA: NASA EONET API v3 · eonet.gsfc.nasa.gov &nbsp;·&nbsp; BASEMAP: © Esri &nbsp;·&nbsp; IMAGERY: NASA GIBS &nbsp;·&nbsp; ALERTS: NWS api.weather.gov &nbsp;·&nbsp; SWDI: NCEI</span>
+    <span>DATA: NASA EONET API v3 · eonet.gsfc.nasa.gov &nbsp;·&nbsp; BASEMAP: © Esri &nbsp;·&nbsp; IMAGERY: NASA GIBS &nbsp;·&nbsp; NWS · NEXRAD/IEM · USGS · GDACS · Open-Meteo · SWDI/NCEI</span>
     <span id="last-updated">—</span>
   </footer>
 
@@ -1418,7 +1435,7 @@ let state = {
   streamArrivals: [], // {id, title, category, at, color}
   lastPollAt: null,
   pollInFlight: false,
-  layers: { eonet: true, nws: false, swdi: false },
+  layers: { eonet: true, nws: false, swdi: false, nexrad: false, usgs: false, gdacs: false },
   nws: {
     features: [],
     severity: 'all', // all | Severe | Extreme
@@ -1431,6 +1448,10 @@ let state = {
     date: null,
     loading: false,
   },
+  usgs: { features: [], loading: false },
+  gdacs: { features: [], loading: false },
+  openMeteo: { cape: null, at: null },
+  nexradProduct: 'nexrad-n0q-900913',
 };
 
 const DEFAULT_CENTER = [20, 10];
@@ -1480,6 +1501,9 @@ let imageryTileLayer = null;
 const markerLayer = L.layerGroup().addTo(map);
 const nwsLayer = L.layerGroup();
 const swdiLayer = L.layerGroup();
+const usgsLayer = L.layerGroup();
+const gdacsLayer = L.layerGroup();
+let nexradTileLayer = null;
 
 function setBasemap(key){
   const def = BASEMAPS[key] || BASEMAPS.streets;
@@ -3016,6 +3040,8 @@ function openSwdiModal(rec){
 function updateWxCounts(){
   const nwsEl = document.getElementById('nws-count');
   const swdiEl = document.getElementById('swdi-count');
+  const usgsEl = document.getElementById('usgs-count');
+  const gdacsEl = document.getElementById('gdacs-count');
   if(nwsEl){
     if(state.nws.loading) nwsEl.textContent = '…';
     else{
@@ -3023,10 +3049,284 @@ function updateWxCounts(){
       nwsEl.textContent = state.layers.nws ? `${n}/${state.nws.features.length}` : String(state.nws.features.length || 0);
     }
   }
-  if(swdiEl){
-    swdiEl.textContent = state.swdi.loading ? '…' : String(state.swdi.records.length || 0);
+  if(swdiEl) swdiEl.textContent = state.swdi.loading ? '…' : String(state.swdi.records.length || 0);
+  if(usgsEl) usgsEl.textContent = state.usgs.loading ? '…' : String(state.usgs.features.length || 0);
+  if(gdacsEl) gdacsEl.textContent = state.gdacs.loading ? '…' : String(state.gdacs.features.length || 0);
+}
+
+/* ---- NEXRAD (Iowa Environmental Mesonet tiles) ---- */
+const NEXRAD_TILE = (product) =>
+  `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png`;
+
+function setNexradLayer(on){
+  state.layers.nexrad = on;
+  if(nexradTileLayer){
+    map.removeLayer(nexradTileLayer);
+    nexradTileLayer = null;
+  }
+  if(!on) return;
+  const product = document.getElementById('nexrad-product')?.value || state.nexradProduct;
+  state.nexradProduct = product;
+  nexradTileLayer = L.tileLayer(NEXRAD_TILE(product), {
+    opacity: 0.65,
+    maxZoom: 12,
+    attribution: 'Radar: Iowa State IEM / NEXRAD',
+  });
+  nexradTileLayer.addTo(map);
+  // keep event markers above radar
+  if(map.hasLayer(markerLayer)){ markerLayer.remove(); markerLayer.addTo(map); }
+  if(map.hasLayer(nwsLayer)){ nwsLayer.remove(); nwsLayer.addTo(map); }
+  if(map.hasLayer(usgsLayer)){ usgsLayer.remove(); usgsLayer.addTo(map); }
+  if(map.hasLayer(gdacsLayer)){ gdacsLayer.remove(); gdacsLayer.addTo(map); }
+  if(map.hasLayer(swdiLayer)){ swdiLayer.remove(); swdiLayer.addTo(map); }
+}
+
+/* ---- USGS earthquakes ---- */
+async function loadUsgsQuakes(){
+  state.usgs.loading = true;
+  updateWxCounts();
+  try{
+    const res = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson', {
+      headers: { 'Accept': 'application/json' },
+      cache: 'no-cache',
+    });
+    if(!res.ok) throw new Error('USGS HTTP ' + res.status);
+    const data = await res.json();
+    state.usgs.features = data.features || [];
+    renderUsgsLayer();
+  }catch(err){
+    console.error(err);
+    showToast('USGS feed failed: ' + err.message);
+  }finally{
+    state.usgs.loading = false;
+    updateWxCounts();
   }
 }
+
+function renderUsgsLayer(){
+  usgsLayer.clearLayers();
+  if(!state.layers.usgs){
+    if(map.hasLayer(usgsLayer)) map.removeLayer(usgsLayer);
+    updateWxCounts();
+    return;
+  }
+  if(!map.hasLayer(usgsLayer)) usgsLayer.addTo(map);
+  state.usgs.features.forEach(f=>{
+    const p = f.properties || {};
+    const c = f.geometry?.coordinates;
+    if(!c) return;
+    const mag = p.mag != null ? Number(p.mag) : 0;
+    const r = Math.max(4, Math.min(18, mag * 3));
+    const m = L.circleMarker([c[1], c[0]], {
+      radius: r,
+      color: '#b085f5',
+      weight: 1.5,
+      fillColor: '#b085f5',
+      fillOpacity: 0.55,
+    });
+    m.bindTooltip(`M${mag.toFixed(1)} · ${p.place || ''}`, { sticky:true });
+    m.on('click', ()=> openUsgsModal(p, c));
+    m.addTo(usgsLayer);
+  });
+  updateWxCounts();
+}
+
+function openUsgsModal(p, c){
+  document.getElementById('telemetry-title').textContent = `M${p.mag ?? '—'} Earthquake`;
+  document.getElementById('telemetry-sub').textContent = p.place || 'USGS';
+  document.getElementById('telemetry-body').innerHTML = `
+    <span class="meta-tag" style="background:#b085f533;color:#b085f5">USGS</span>
+    <div class="meta-kv"><span class="k">Magnitude</span><span class="v">${p.mag ?? '—'}</span></div>
+    <div class="meta-kv"><span class="k">Place</span><span class="v">${p.place || '—'}</span></div>
+    <div class="meta-kv"><span class="k">Time</span><span class="v">${p.time ? new Date(p.time).toLocaleString() : '—'}</span></div>
+    <div class="meta-kv"><span class="k">Depth</span><span class="v">${c && c[2] != null ? c[2] + ' km' : '—'}</span></div>
+    <div class="meta-kv"><span class="k">Type</span><span class="v">${p.type || '—'}</span></div>
+    <div class="meta-kv"><span class="k">Tsunami</span><span class="v">${p.tsunami ? 'Yes' : 'No'}</span></div>
+    <div class="meta-kv"><span class="k">Felt / CDI</span><span class="v">${p.felt ?? '—'} / ${p.cdi ?? '—'}</span></div>
+    <div class="meta-kv"><span class="k">Alert</span><span class="v">${p.alert || '—'}</span></div>
+    <div class="meta-kv"><span class="k">Status</span><span class="v">${p.status || '—'}</span></div>
+    <div class="meta-kv"><span class="k">IDs</span><span class="v" style="font-size:10px">${p.ids || p.code || '—'}</span></div>
+    <div class="detail-links">
+      ${p.url ? `<a href="${p.url}" target="_blank" rel="noopener">↗ USGS event page</a>` : ''}
+      <a href="https://earthquake.usgs.gov/earthquakes/map/" target="_blank" rel="noopener">↗ USGS Earthquake Map</a>
+    </div>
+  `;
+  document.getElementById('telemetry-backdrop').classList.add('open');
+  document.getElementById('telemetry-backdrop').setAttribute('aria-hidden','false');
+  if(c) map.flyTo([c[1], c[0]], Math.max(map.getZoom(), 5), {duration:0.5});
+}
+
+/* ---- GDACS global hazards ---- */
+async function loadGdacs(){
+  state.gdacs.loading = true;
+  updateWxCounts();
+  try{
+    // Preferred JSON endpoint (recent events). Fallback: RSS with geo tags.
+    let features = [];
+    try{
+      const url = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventlist=EQ;TC;FL;VO;DR;WF&alertlevel=red;orange;green';
+      const res = await fetch(url, { headers:{ 'Accept':'application/json' }, cache:'no-cache' });
+      if(res.ok){
+        const data = await res.json();
+        features = normalizeGdacs(data);
+      }
+    }catch(e){ console.warn('GDACS JSON failed', e); }
+
+    if(!features.length){
+      const res = await fetch('https://www.gdacs.org/xml/rss.xml', { cache:'no-cache' });
+      if(!res.ok) throw new Error('GDACS HTTP ' + res.status);
+      const xml = await res.text();
+      features = parseGdacsRss(xml);
+    }
+    state.gdacs.features = features;
+    renderGdacsLayer();
+  }catch(err){
+    console.error(err);
+    showToast('GDACS failed: ' + err.message);
+  }finally{
+    state.gdacs.loading = false;
+    updateWxCounts();
+  }
+}
+
+function normalizeGdacs(data){
+  // SEARCH may return {features:[...]} or array of events
+  if(Array.isArray(data?.features)) return data.features.map(f=>({
+    id: f.properties?.eventid || f.id,
+    title: f.properties?.name || f.properties?.eventname || 'GDACS event',
+    type: f.properties?.eventtype || f.properties?.type,
+    alert: f.properties?.alertlevel || f.properties?.alertscore,
+    from: f.properties?.fromdate || f.properties?.date,
+    to: f.properties?.todate,
+    country: f.properties?.country || f.properties?.countrylist,
+    url: f.properties?.url || f.properties?.link,
+    lat: f.geometry?.coordinates?.[1],
+    lon: f.geometry?.coordinates?.[0],
+    raw: f,
+  }));
+  if(Array.isArray(data)){
+    return data.map(ev=>({
+      id: ev.eventid || ev.id,
+      title: ev.name || ev.eventname || 'GDACS event',
+      type: ev.eventtype,
+      alert: ev.alertlevel,
+      from: ev.fromdate,
+      to: ev.todate,
+      country: ev.country,
+      url: ev.url,
+      lat: ev.latitude ?? ev.lat,
+      lon: ev.longitude ?? ev.lon,
+      raw: ev,
+    }));
+  }
+  return [];
+}
+
+function parseGdacsRss(xml){
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const items = [...doc.querySelectorAll('item')];
+  return items.map(item=>{
+    const title = item.querySelector('title')?.textContent || 'GDACS';
+    const link = item.querySelector('link')?.textContent || '';
+    const desc = item.querySelector('description')?.textContent || '';
+    const lat = parseFloat(item.getElementsByTagName('geo:lat')[0]?.textContent || item.querySelector('lat')?.textContent);
+    const lon = parseFloat(item.getElementsByTagName('geo:long')[0]?.textContent || item.querySelector('long')?.textContent);
+    const et = item.getElementsByTagName('gdacs:eventtype')[0]?.textContent
+      || item.querySelector('eventtype')?.textContent || '';
+    const alert = item.getElementsByTagName('gdacs:alertlevel')[0]?.textContent
+      || item.querySelector('alertlevel')?.textContent || '';
+    const eid = item.getElementsByTagName('gdacs:eventid')[0]?.textContent || title;
+    return {
+      id: eid, title, type: et, alert, url: link, lat, lon,
+      country: item.getElementsByTagName('gdacs:country')[0]?.textContent || '',
+      from: item.querySelector('pubDate')?.textContent || '',
+      raw: { description: desc },
+    };
+  }).filter(e => e.lat != null && e.lon != null && !isNaN(e.lat) && !isNaN(e.lon));
+}
+
+function gdacsColor(alert){
+  const a = (alert||'').toString().toLowerCase();
+  if(a.includes('red')) return '#ff4d5e';
+  if(a.includes('orange')) return '#ff8a3d';
+  if(a.includes('green')) return '#3ddc84';
+  return '#4fd1c5';
+}
+
+function renderGdacsLayer(){
+  gdacsLayer.clearLayers();
+  if(!state.layers.gdacs){
+    if(map.hasLayer(gdacsLayer)) map.removeLayer(gdacsLayer);
+    updateWxCounts();
+    return;
+  }
+  if(!map.hasLayer(gdacsLayer)) gdacsLayer.addTo(map);
+  state.gdacs.features.forEach(ev=>{
+    if(ev.lat == null || ev.lon == null) return;
+    const color = gdacsColor(ev.alert);
+    const m = L.circleMarker([ev.lat, ev.lon], {
+      radius: 7, color, weight: 2, fillColor: color, fillOpacity: 0.45,
+    });
+    m.bindTooltip(`${ev.type||''} · ${ev.title}`, { sticky:true });
+    m.on('click', ()=> openGdacsModal(ev));
+    m.addTo(gdacsLayer);
+  });
+  updateWxCounts();
+}
+
+function openGdacsModal(ev){
+  const color = gdacsColor(ev.alert);
+  document.getElementById('telemetry-title').textContent = ev.title || 'GDACS event';
+  document.getElementById('telemetry-sub').textContent = `${ev.type || 'Hazard'} · ${ev.alert || '—'}`;
+  document.getElementById('telemetry-body').innerHTML = `
+    <span class="meta-tag" style="background:${color}33;color:${color}">${ev.alert || 'GDACS'}</span>
+    <span class="meta-tag" style="background:var(--cyan-dim);color:var(--cyan)">${ev.type || '—'}</span>
+    <div class="meta-kv"><span class="k">Country</span><span class="v">${ev.country || '—'}</span></div>
+    <div class="meta-kv"><span class="k">From</span><span class="v">${ev.from || '—'}</span></div>
+    <div class="meta-kv"><span class="k">To</span><span class="v">${ev.to || '—'}</span></div>
+    <div class="meta-kv"><span class="k">Location</span><span class="v">${Number(ev.lat).toFixed(3)}, ${Number(ev.lon).toFixed(3)}</span></div>
+    <div class="meta-kv"><span class="k">Event ID</span><span class="v">${ev.id || '—'}</span></div>
+    ${ev.raw?.description ? `<div class="meta-block">${ev.raw.description.replace(/<[^>]+>/g,'').slice(0,1200)}</div>` : ''}
+    <div class="detail-links">
+      ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noopener">↗ GDACS event page</a>` : ''}
+      <a href="https://www.gdacs.org/" target="_blank" rel="noopener">↗ GDACS</a>
+    </div>
+  `;
+  document.getElementById('telemetry-backdrop').classList.add('open');
+  document.getElementById('telemetry-backdrop').setAttribute('aria-hidden','false');
+  map.flyTo([ev.lat, ev.lon], Math.max(map.getZoom(), 4), {duration:0.5});
+}
+
+/* ---- Open-Meteo CAPE sample (no key; non-commercial free tier) ---- */
+async function sampleOpenMeteoCape(){
+  const c = map.getCenter();
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${c.lat.toFixed(4)}&longitude=${c.lng.toFixed(4)}&hourly=cape&forecast_days=1&timezone=UTC`;
+  try{
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const times = data.hourly?.time || [];
+    const cape = data.hourly?.cape || [];
+    // pick nearest hour to now
+    const now = Date.now();
+    let best = 0, bestDiff = Infinity;
+    times.forEach((t,i)=>{
+      const d = Math.abs(new Date(t).getTime() - now);
+      if(d < bestDiff){ bestDiff = d; best = i; }
+    });
+    const val = cape[best];
+    state.openMeteo.cape = val;
+    state.openMeteo.at = times[best];
+    const el = document.getElementById('om-cape-readout');
+    if(el){
+      el.innerHTML = `CAPE: <b>${val != null ? val + ' J/kg' : '—'}</b> @ ${times[best] || '—'} UTC · ${c.lat.toFixed(2)}, ${c.lng.toFixed(2)}`;
+    }
+    showToast(val != null ? `Open-Meteo CAPE ${val} J/kg` : 'No CAPE value');
+  }catch(err){
+    showToast('Open-Meteo CAPE failed: ' + err.message);
+  }
+}
+
 
 function setEonetLayerVisible(on){
   state.layers.eonet = on;
@@ -3054,6 +3354,23 @@ function wireWeatherControls(){
     if(state.layers.nws && state.nws.features.length === 0) loadNwsAlerts();
     else renderNwsLayer();
   });
+  document.getElementById('layer-nexrad').addEventListener('change', e=>{
+    setNexradLayer(e.target.checked);
+  });
+  document.getElementById('nexrad-product').addEventListener('change', e=>{
+    state.nexradProduct = e.target.value;
+    if(state.layers.nexrad) setNexradLayer(true);
+  });
+  document.getElementById('layer-usgs').addEventListener('change', e=>{
+    state.layers.usgs = e.target.checked;
+    if(state.layers.usgs && state.usgs.features.length === 0) loadUsgsQuakes();
+    else renderUsgsLayer();
+  });
+  document.getElementById('layer-gdacs').addEventListener('change', e=>{
+    state.layers.gdacs = e.target.checked;
+    if(state.layers.gdacs && state.gdacs.features.length === 0) loadGdacs();
+    else renderGdacsLayer();
+  });
   document.getElementById('layer-swdi').addEventListener('change', e=>{
     state.layers.swdi = e.target.checked;
     renderSwdiLayer();
@@ -3074,6 +3391,7 @@ function wireWeatherControls(){
   document.getElementById('swdi-dataset').addEventListener('change', e=>{
     state.swdi.dataset = e.target.value;
   });
+  document.getElementById('om-cape-btn').addEventListener('click', sampleOpenMeteoCape);
 }
 
 
