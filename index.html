@@ -3569,8 +3569,11 @@ const NWS_WFOS = [
 function populateNwsOfficeSelect(){
   const sel = document.getElementById('nws-office-select');
   if(!sel) return;
-  const opts = NWS_WFOS.slice().sort((a,b)=>a.n.localeCompare(b.n))
-    .map(o=>`<option value="${o.c}">${o.c} — ${o.n}</option>`).join('');
+  // Alphabetical by office name so the list is easy to scan
+  const opts = NWS_WFOS.slice()
+    .sort((a,b)=> a.n.localeCompare(b.n, undefined, { sensitivity: 'base' }))
+    .map(o=>`<option value="${o.c}">${o.n} (${o.c})</option>`)
+    .join('');
   sel.innerHTML = '<option value="">All offices</option>' + opts;
 }
 
