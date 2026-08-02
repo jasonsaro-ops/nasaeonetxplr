@@ -1177,6 +1177,19 @@ footer a{color:var(--text-dim);}
               </select>
             </div>
             <div>
+              <label class="tf-label">Radar animation</label>
+              <div class="seg" id="nexrad-anim-seg">
+                <button type="button" id="nexrad-anim-play">Play</button>
+                <button type="button" id="nexrad-anim-pause" class="active">Pause</button>
+              </div>
+              <div class="seg" id="nexrad-anim-speed" style="margin-top:6px;">
+                <button type="button" data-speed="800">Fast</button>
+                <button type="button" data-speed="1400" class="active">Med</button>
+                <button type="button" data-speed="2200">Slow</button>
+              </div>
+              <div class="wx-mini-stats" id="nexrad-anim-label">Frame: live</div>
+            </div>
+            <div>
               <label class="tf-label">Open-Meteo CAPE (map center)</label>
               <button class="btn" id="om-cape-btn" style="width:100%;">Sample CAPE at map center</button>
               <div class="wx-mini-stats" id="om-cape-readout">CAPE: —</div>
@@ -1480,6 +1493,14 @@ let state = {
   gdacs: { features: [], loading: false },
   openMeteo: { cape: null, at: null },
   nexradProduct: 'nexrad-n0q-900913',
+  nexradAnim: {
+    playing: false,
+    speed: 1400,
+    frameIndex: 0,
+    // offsets in minutes (oldest → newest/live)
+    offsets: [50, 40, 30, 20, 10, 0],
+    timer: null,
+  },
   spc: { features: [], product: 'cat', loading: false },
   nwsOffice: null, // selected WFO code e.g. PHI
   knownNwsAlertIds: new Set(),
@@ -3112,35 +3133,102 @@ function updateWxCounts(){
   if(spcEl) spcEl.textContent = state.spc.loading ? '…' : String(state.spc.features.length || 0);
 }
 
-/* ---- NEXRAD (Iowa Environmental Mesonet tiles) ---- */
-const NEXRAD_TILE = (product) =>
-  `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${product}/{z}/{x}/{y}.png`;
+/* ---- NEXRAD (Iowa Environmental Mesonet tiles) + animation ---- */
+function nexradProductId(baseProduct, offsetMin){
+  // IEM supports -m{N}m suffixes for past frames (e.g. nexrad-n0q-900913-m30m)
+  // MRMS products may not support all offsets; fall back to live if offset=0
+  if(!offsetMin) return baseProduct;
+  // Only animate NEXRAD base products; MRMS stays live
+  if(baseProduct.startsWith('q2-')) return baseProduct;
+  return `${baseProduct}-m${offsetMin}m`;
+}
+
+function nexradTileUrl(baseProduct, offsetMin){
+  const id = nexradProductId(baseProduct, offsetMin);
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${id}/{z}/{x}/{y}.png`;
+}
+
+function updateNexradAnimLabel(){
+  const el = document.getElementById('nexrad-anim-label');
+  if(!el) return;
+  const off = state.nexradAnim.offsets[state.nexradAnim.frameIndex] ?? 0;
+  el.textContent = off === 0 ? 'Frame: live' : `Frame: −${off} min`;
+}
+
+function stopNexradAnim(){
+  state.nexradAnim.playing = false;
+  if(state.nexradAnim.timer){
+    clearInterval(state.nexradAnim.timer);
+    state.nexradAnim.timer = null;
+  }
+  document.getElementById('nexrad-anim-play')?.classList.remove('active');
+  document.getElementById('nexrad-anim-pause')?.classList.add('active');
+}
+
+function showNexradFrame(index){
+  const anim = state.nexradAnim;
+  anim.frameIndex = ((index % anim.offsets.length) + anim.offsets.length) % anim.offsets.length;
+  const offset = anim.offsets[anim.frameIndex];
+  const product = document.getElementById('nexrad-product')?.value || state.nexradProduct;
+  state.nexradProduct = product;
+
+  if(!state.layers.nexrad) return;
+
+  // Swap tile URL in place when possible to reduce flicker
+  const url = nexradTileUrl(product, offset);
+  if(nexradTileLayer){
+    // Leaflet setUrl refreshes tiles for the new template
+    nexradTileLayer.setUrl(url);
+  }else{
+    nexradTileLayer = L.tileLayer(url, {
+      opacity: 0.7,
+      maxZoom: 12,
+      maxNativeZoom: 10,
+      updateWhenIdle: true,
+      updateWhenZooming: false,
+      keepBuffer: 2,
+      attribution: 'Radar: Iowa State IEM / NEXRAD',
+    }).addTo(map);
+    restackMapLayers();
+  }
+  updateNexradAnimLabel();
+}
+
+function startNexradAnim(){
+  if(!state.layers.nexrad){
+    // Auto-enable radar layer
+    const cb = document.getElementById('layer-nexrad');
+    if(cb){ cb.checked = true; }
+    state.layers.nexrad = true;
+    showNexradFrame(0);
+  }
+  stopNexradAnim(); // clear any existing timer
+  state.nexradAnim.playing = true;
+  document.getElementById('nexrad-anim-play')?.classList.add('active');
+  document.getElementById('nexrad-anim-pause')?.classList.remove('active');
+  const tick = ()=>{
+    showNexradFrame(state.nexradAnim.frameIndex + 1);
+  };
+  // advance immediately so user sees motion
+  tick();
+  state.nexradAnim.timer = setInterval(tick, state.nexradAnim.speed || 1400);
+}
 
 function setNexradLayer(on){
   state.layers.nexrad = on;
   const product = document.getElementById('nexrad-product')?.value || state.nexradProduct;
   state.nexradProduct = product;
   if(!on){
+    stopNexradAnim();
     if(nexradTileLayer){
       try{ map.removeLayer(nexradTileLayer); }catch(_){}
       nexradTileLayer = null;
     }
+    updateNexradAnimLabel();
     return;
   }
-  // Reuse layer when only product changes — smoother than full tear-down
-  if(nexradTileLayer){
-    try{ map.removeLayer(nexradTileLayer); }catch(_){}
-  }
-  nexradTileLayer = L.tileLayer(NEXRAD_TILE(product), {
-    opacity: 0.7,
-    maxZoom: 12,
-    maxNativeZoom: 10,
-    updateWhenIdle: true,
-    updateWhenZooming: false,
-    keepBuffer: 2,
-    attribution: 'Radar: Iowa State IEM / NEXRAD',
-  });
-  nexradTileLayer.addTo(map);
+  // Show current anim frame (or live)
+  showNexradFrame(state.nexradAnim.frameIndex);
   restackMapLayers();
 }
 
@@ -3680,9 +3768,9 @@ async function softRefresh(){
     if(state.layers.usgs || state.usgs.features.length) tasks.push(loadUsgsQuakes());
     if(state.layers.gdacs || state.gdacs.features.length) tasks.push(loadGdacs());
     if(state.layers.spc || state.spc.features.length) tasks.push(loadSpcOutlook());
-    // NEXRAD: nudge tile refresh without destroying layer
-    if(state.layers.nexrad && nexradTileLayer){
-      nexradTileLayer.redraw();
+    // NEXRAD: refresh current animation frame
+    if(state.layers.nexrad){
+      showNexradFrame(state.nexradAnim.frameIndex);
     }
     await Promise.all(tasks);
     showToast('Feeds updated');
@@ -3760,7 +3848,24 @@ function wireWeatherControls(){
   });
   document.getElementById('nexrad-product').addEventListener('change', e=>{
     state.nexradProduct = e.target.value;
-    if(state.layers.nexrad) setNexradLayer(true);
+    if(state.layers.nexrad) showNexradFrame(state.nexradAnim.frameIndex);
+  });
+  document.getElementById('nexrad-anim-play')?.addEventListener('click', ()=>{
+    startNexradAnim();
+  });
+  document.getElementById('nexrad-anim-pause')?.addEventListener('click', ()=>{
+    stopNexradAnim();
+    // Snap to live frame when paused
+    state.nexradAnim.frameIndex = state.nexradAnim.offsets.length - 1;
+    if(state.layers.nexrad) showNexradFrame(state.nexradAnim.frameIndex);
+  });
+  document.getElementById('nexrad-anim-speed')?.addEventListener('click', e=>{
+    const btn = e.target.closest('button[data-speed]');
+    if(!btn) return;
+    document.querySelectorAll('#nexrad-anim-speed button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.nexradAnim.speed = Number(btn.dataset.speed) || 1400;
+    if(state.nexradAnim.playing) startNexradAnim(); // restart with new speed
   });
   document.getElementById('layer-usgs').addEventListener('change', e=>{
     state.layers.usgs = e.target.checked;
