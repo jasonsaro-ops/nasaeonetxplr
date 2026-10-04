@@ -2,84 +2,70 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="description" content="EONETXPLR — Mission-critical global natural event tracker with NEXRAD, NWS alerts, ISS 3D globe and multi-source intelligence." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="EONETXPLR — NASA Earth Observatory Natural Event Tracker with FIRMS wildfires, USGS quakes, and GIBS imagery." />
   <meta name="theme-color" content="#070a10" />
-  <title>EONETXPLR — Global Intelligence Platform</title>
+  <title>EONETXPLR — NASA Natural Event Tracker</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23f59e0b' stroke-width='6'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%23f59e0b'/%3E%3C/svg%3E" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.124.0/Widgets/widgets.min.css" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <div id="boot-screen" aria-live="polite">
+  <div id="boot-screen">
     <div class="boot-inner">
       <div class="boot-logo">
-        <svg viewBox="0 0 120 120" width="96" height="96" aria-hidden="true">
-          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(245,158,11,0.25)" stroke-width="1.5"/>
-          <circle cx="60" cy="60" r="38" fill="none" stroke="rgba(6,182,212,0.35)" stroke-width="1"/>
-          <circle cx="60" cy="60" r="8" fill="#f59e0b"/>
-          <circle class="orbit-dot" cx="60" cy="22" r="3.5" fill="#06b6d4"/>
-          <circle class="orbit-dot d2" cx="98" cy="60" r="2.5" fill="#f59e0b"/>
-        </svg>
+        <svg viewBox="0 0 120 120" width="88" height="88"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(245,158,11,0.25)" stroke-width="1.5"/><circle cx="60" cy="60" r="38" fill="none" stroke="rgba(6,182,212,0.35)" stroke-width="1"/><circle cx="60" cy="60" r="8" fill="#f59e0b"/></svg>
       </div>
       <h1 class="boot-title">EONETXPLR</h1>
-      <p class="boot-sub">GLOBAL NATURAL EVENT &amp; ORBITAL INTELLIGENCE</p>
+      <p class="boot-sub">NASA EARTH OBSERVATORY NATURAL EVENT TRACKER</p>
       <div class="boot-bar"><div class="boot-progress" id="boot-progress"></div></div>
-      <p class="boot-status" id="boot-status">CALIBRATING SENSORS…</p>
-      <p class="boot-meta">V2.1 · NASA EONET · NWS · NEXRAD · ISS</p>
+      <p class="boot-status" id="boot-status">CONNECTING TO NASA…</p>
+      <p class="boot-meta">EONET · FIRMS · GIBS · USGS</p>
     </div>
   </div>
 
-  <div id="app" class="hidden" role="application">
+  <div id="app" class="hidden">
     <header id="topbar">
       <div class="brand">
         <span class="brand-mark"></span>
         <span class="brand-name">EONETXPLR</span>
-        <span class="brand-ver">V2.1</span>
+        <span class="brand-ver">NASA</span>
       </div>
       <div class="status-cluster">
         <div class="stat"><span class="stat-label">OPEN</span><span class="stat-val" id="stat-open">—</span></div>
         <div class="stat"><span class="stat-label">SHOWN</span><span class="stat-val" id="stat-shown">—</span></div>
-        <div class="stat"><span class="stat-label">NWS</span><span class="stat-val" id="stat-nws">—</span></div>
-        <div class="stat"><span class="stat-label">LAYERS</span><span class="stat-val" id="stat-layers">0</span></div>
-        <div class="stat"><span class="stat-label">ENTITIES</span><span class="stat-val" id="stat-entities">0</span></div>
+        <div class="stat"><span class="stat-label">FIRES</span><span class="stat-val" id="stat-fires">—</span></div>
+        <div class="stat"><span class="stat-label">QUAKES</span><span class="stat-val" id="stat-quakes">—</span></div>
       </div>
       <div class="clock-cluster">
         <div class="clock" id="clock-zulu">00:00:00<span>Z</span></div>
-        <div class="api-status" id="api-status" data-state="connecting">
-          <span class="dot"></span><span id="api-status-text">CONNECTING</span>
-        </div>
+        <div class="api-status" id="api-status" data-state="connecting"><span class="dot"></span><span id="api-status-text">CONNECTING</span></div>
       </div>
       <div class="top-actions">
-        <select id="autorefresh-select" class="ctrl-select" title="Auto-refresh">
+        <select id="autorefresh-select" class="ctrl-select">
           <option value="0">Manual</option>
           <option value="60">1 min</option>
           <option value="120" selected>2 min</option>
-          <option value="180">3 min</option>
           <option value="300">5 min</option>
         </select>
-        <button class="icon-btn" id="btn-refresh" title="Soft refresh">⟳</button>
-        <button class="icon-btn" id="btn-alerts" title="Alert tones ON/OFF" aria-pressed="true">ALERT</button>
+        <button class="icon-btn" id="btn-refresh" title="Refresh">⟳</button>
         <button class="icon-btn" id="btn-fullscreen" title="Fullscreen">⛶</button>
       </div>
     </header>
 
-    <main id="main" class="cols-4">
+    <main id="main" class="cols-3">
       <aside id="left-panel" class="panel">
         <div class="panel-section">
           <div class="section-head"><h2>Search &amp; Filters</h2></div>
-          <input type="search" id="search-input" class="search-box" placeholder="Search event titles…" autocomplete="off" />
+          <input type="search" id="search-input" class="search-box" placeholder="Search event titles…" />
           <div class="seg-control" id="status-seg">
             <button data-status="open" class="active">Open</button>
             <button data-status="closed">Closed</button>
             <button data-status="all">All</button>
           </div>
           <div class="field-row">
-            <label for="days-select">Lookback</label>
+            <label>Lookback</label>
             <select id="days-select" class="ctrl-select">
               <option value="7">7d</option><option value="14">14d</option>
               <option value="30" selected>30d</option><option value="60">60d</option>
@@ -88,53 +74,47 @@
           </div>
         </div>
         <div class="panel-section">
-          <div class="section-head">
-            <h2>Categories</h2>
-            <button class="text-btn" id="cat-toggle-all">Toggle all</button>
-          </div>
+          <div class="section-head"><h2>Categories</h2><button class="text-btn" id="cat-toggle-all">Toggle all</button></div>
           <div id="category-list" class="checkbox-list"></div>
         </div>
         <div class="panel-section">
-          <div class="section-head"><h2>Intelligence Layers</h2></div>
+          <div class="section-head"><h2>Layers</h2></div>
           <div class="layer-toggles">
             <label class="layer-row"><input type="checkbox" id="layer-eonet" checked /><span class="layer-swatch eonet"></span>EONET Events<span class="layer-count" id="count-eonet">0</span></label>
-            <label class="layer-row"><input type="checkbox" id="layer-nws" checked /><span class="layer-swatch nws"></span>NWS Active Alerts<span class="layer-count" id="count-nws">0</span></label>
-            <label class="layer-row"><input type="checkbox" id="layer-nexrad" /><span class="layer-swatch nexrad"></span>NEXRAD Radar</label>
-            <label class="layer-row"><input type="checkbox" id="layer-usgs" checked /><span class="layer-swatch usgs"></span>USGS Earthquakes<span class="layer-count" id="count-usgs">0</span></label>
-            <div class="field-row" style="margin:4px 0 6px 24px">
-              <label style="font-size:10px">USGS feed</label>
-              <select id="usgs-feed" class="ctrl-select" style="font-size:10px;max-width:140px">
-                <option value="2.5_day" selected>M2.5+ 24h</option>
-                <option value="1.0_day">M1.0+ 24h</option>
-                <option value="all_day">All 24h</option>
-                <option value="2.5_week">M2.5+ 7d</option>
-                <option value="4.5_week">M4.5+ 7d</option>
-                <option value="significant_week">Significant 7d</option>
-              </select>
-            </div>
-            <label class="layer-row"><input type="checkbox" id="layer-gdacs" /><span class="layer-swatch gdacs"></span>GDACS Hazards<span class="layer-count" id="count-gdacs">0</span></label>
-            <label class="layer-row"><input type="checkbox" id="layer-iss" checked /><span class="layer-swatch iss"></span>ISS Live<span class="layer-count" id="count-iss">1</span></label>
-            <label class="layer-row"><input type="checkbox" id="layer-iss-trail" checked /><span class="layer-swatch trail"></span>ISS Ground Track</label>
+            <label class="layer-row"><input type="checkbox" id="layer-firms" checked /><span class="layer-swatch firms"></span>FIRMS Wildfires 24h<span class="layer-count" id="count-firms">0</span></label>
+            <label class="layer-row"><input type="checkbox" id="layer-usgs" checked /><span class="layer-swatch usgs"></span>USGS Quakes<span class="layer-count" id="count-usgs">0</span></label>
+            <label class="layer-row"><input type="checkbox" id="layer-gibs" /><span class="layer-swatch gibs"></span>GIBS Satellite</label>
           </div>
           <div class="field-row" style="margin-top:8px">
-            <label>NEXRAD product</label>
-            <select id="nexrad-product" class="ctrl-select">
-              <option value="nexrad-n0q-900913">Base Reflectivity (N0Q)</option>
-              <option value="nexrad-n0r-900913">Base Reflectivity (N0R)</option>
+            <label>USGS feed</label>
+            <select id="usgs-feed" class="ctrl-select" style="font-size:10px;max-width:130px">
+              <option value="2.5_day" selected>M2.5+ 24h</option>
+              <option value="4.5_day">M4.5+ 24h</option>
+              <option value="significant_week">Significant 7d</option>
+              <option value="2.5_week">M2.5+ 7d</option>
             </select>
           </div>
-          <button class="btn full" id="btn-sample-grid" style="margin-top:10px" title="Load NWS gridpoint layers for map center">Sample Gridpoint (map center)</button>
-          <button class="btn full" id="btn-windy" style="margin-top:6px" title="Open Windy.com weather layers">Windy Layers (Radar / Wind / …)</button>
-          <p class="hint" style="margin-top:6px;font-size:10px">Click map for NWS gridpoint · Windy opens full overlay suite (radar, wind, temp, satellite…)</p>
+          <div class="field-row" style="margin-top:6px">
+            <label>GIBS layer</label>
+            <select id="gibs-layer" class="ctrl-select" style="font-size:10px;max-width:150px">
+              <option value="MODIS_Terra_CorrectedReflectance_TrueColor">MODIS True Color</option>
+              <option value="VIIRS_SNPP_CorrectedReflectance_TrueColor">VIIRS True Color</option>
+              <option value="MODIS_Terra_CorrectedReflectance_Bands721">MODIS 7-2-1</option>
+              <option value="VIIRS_SNPP_CorrectedReflectance_BandsM11-I2-I1">VIIRS M11-I2-I1</option>
+              <option value="MODIS_Terra_Aerosol">MODIS Aerosol</option>
+              <option value="MODIS_Terra_Land_Surface_Temp_Day">Land Surface Temp</option>
+              <option value="Coastlines_15m">Coastlines</option>
+            </select>
+          </div>
         </div>
         <div class="panel-section compact">
           <button class="btn primary full" id="btn-apply">Apply Filters</button>
-          <button class="btn ghost full" id="btn-reset">Reset All</button>
+          <button class="btn ghost full" id="btn-reset">Reset</button>
         </div>
       </aside>
 
       <section id="map-wrap">
-        <div id="map" role="img" aria-label="Interactive world map"></div>
+        <div id="map"></div>
         <div class="map-float top-left">
           <div class="chip-bar">
             <span class="chip" id="chip-status">OPEN</span>
@@ -149,126 +129,49 @@
             <button data-base="topo">TOPO</button>
           </div>
           <button class="icon-btn map-btn" id="btn-fit" title="Fit events">⊙</button>
-          <button class="icon-btn map-btn" id="btn-home" title="World view">⌂</button>
+          <button class="icon-btn map-btn" id="btn-home" title="World">⌂</button>
         </div>
         <div class="map-float bottom-left" id="legend-box">
           <div class="legend-title">LEGEND</div>
           <div id="legend-rows"></div>
         </div>
-        <div class="map-float bottom-right" id="iss-hud">
-          <div class="iss-hud-head">
-            <span class="iss-label">ISS</span>
-            <span class="iss-status" id="iss-status">TRACKING</span>
-          </div>
-          <div class="iss-coords">
-            <div><span class="lbl">LAT</span> <span id="iss-lat">—</span></div>
-            <div><span class="lbl">LON</span> <span id="iss-lon">—</span></div>
-          </div>
-          <div class="iss-meta">
-            <div><span class="lbl">ALT</span> <span id="iss-alt">—</span> km</div>
-            <div><span class="lbl">VEL</span> <span id="iss-vel">—</span> km/h</div>
-          </div>
-          <div class="iss-crew" id="iss-crew">Crew: —</div>
-          <button class="btn primary full" id="btn-iss-3d" style="margin-top:8px;font-size:11px">Open 3D Globe</button>
-        </div>
       </section>
 
       <aside id="right-panel" class="panel">
-        <div class="tabs" role="tablist">
+        <div class="tabs">
           <button class="tab active" data-tab="feed">Feed</button>
           <button class="tab" data-tab="detail">Detail</button>
-          <button class="tab" data-tab="iss">ISS</button>
+          <button class="tab" data-tab="nasa">NASA</button>
         </div>
         <div class="tab-panels">
           <div class="tab-panel active" id="panel-feed">
-            <div class="feed-banner"><span id="feed-label">Live stream · Open events</span></div>
+            <div class="feed-banner"><span id="feed-label">EONET open events</span></div>
             <div id="event-list" class="event-list"></div>
           </div>
           <div class="tab-panel" id="panel-detail">
-            <div id="detail-empty" class="empty-state"><p>Select an event from the feed or map.</p></div>
+            <div id="detail-empty" class="empty-state"><p>Select an event to view full metadata, sources, geometry timeline, and related NASA imagery layers.</p></div>
             <div id="detail-content" class="detail-content hidden"></div>
           </div>
-          <div class="tab-panel" id="panel-iss">
+          <div class="tab-panel" id="panel-nasa">
             <div class="iss-panel">
-              <h3>International Space Station</h3>
-              <p class="hint">Live orbital data · Updates ~6 s</p>
-              <div class="iss-card">
-                <div class="iss-big-coords">
-                  <div><span>Latitude</span><strong id="iss-lat2">—</strong></div>
-                  <div><span>Longitude</span><strong id="iss-lon2">—</strong></div>
-                </div>
-                <div class="iss-grid">
-                  <div><span>Altitude</span><strong id="iss-alt2">—</strong></div>
-                  <div><span>Velocity</span><strong id="iss-vel2">—</strong></div>
-                  <div><span>Visibility</span><strong id="iss-vis">—</strong></div>
-                  <div><span>Footprint</span><strong id="iss-foot">—</strong></div>
-                </div>
+              <h3>NASA API Hub</h3>
+              <p class="hint">APOD · DONKI · NeoWs · using your API key</p>
+              <div id="apod-card" class="iss-card" style="margin-bottom:12px">
+                <div class="hint">Loading APOD…</div>
               </div>
-              <button class="btn primary full" id="btn-iss-3d-2" style="margin:12px 0">Launch 3D Globe + Trajectory</button>
-              <h4>People Currently in Space</h4>
-              <ul id="crew-list" class="crew-list"></ul>
-              <p class="hint small">Sources: WhereTheISS.at · Open Notify</p>
+              <h4>Space Weather (DONKI)</h4>
+              <div id="donki-list" class="crew-list"></div>
+              <h4 style="margin-top:14px">Near-Earth Objects (today)</h4>
+              <div id="neo-list" class="crew-list"></div>
             </div>
-          </div>
-        </div>
-      </aside>
-
-      <aside id="nws-panel" class="panel">
-        <div class="tabs" role="tablist">
-          <button class="tab active" data-nwstab="stations">WFO Stations</button>
-          <button class="tab" data-nwstab="alerts">NWS Alerts</button>
-        </div>
-        <div class="tab-panels">
-          <div class="tab-panel active" id="panel-stations">
-            <div class="panel-section" style="border:none;padding-bottom:6px">
-              <input type="search" id="wfo-search" class="search-box" placeholder="Filter by state or code…" />
-              <button class="btn ghost full" id="btn-wfo-reset" style="margin-top:6px;font-size:11px">Reset WFO list</button>
-            </div>
-            <div id="wfo-list" class="wfo-list"></div>
-            <div id="wfo-detail" class="wfo-detail hidden">
-              <div class="wfo-detail-head">
-                <strong id="wfo-detail-name">—</strong>
-                <button class="text-btn" id="wfo-back">← Back</button>
-              </div>
-              <button class="btn full" id="wfo-zoom">Zoom map to office</button>
-              <button class="btn full" id="wfo-ping" style="margin-top:6px">Ping for latest products</button>
-              <div id="wfo-products" class="wfo-products"></div>
-            </div>
-          </div>
-          <div class="tab-panel" id="panel-alerts">
-            <div class="panel-section" style="border:none;padding-bottom:6px">
-              <input type="search" id="nws-alert-search" class="search-box" placeholder="Search alerts (Tornado, Flood…)" />
-              <div class="seg-control" id="nws-sev-seg">
-                <button data-sev="all" class="active">All</button>
-                <button data-sev="Extreme">Extreme</button>
-                <button data-sev="Severe">Severe</button>
-                <button data-sev="Moderate">Mod</button>
-              </div>
-              <button class="btn ghost full" id="btn-nws-reset" style="margin-top:6px;font-size:11px">Reset filters & reload</button>
-            </div>
-            <div id="nws-alert-list" class="event-list"></div>
           </div>
         </div>
       </aside>
     </main>
-    <div id="toast-stack" aria-live="polite"></div>
-  </div>
-
-  <div id="cesium-modal" class="modal hidden">
-    <div class="modal-backdrop" id="cesium-close-bg"></div>
-    <div class="modal-panel">
-      <div class="modal-head">
-        <span>ISS 3D GLOBE · LIVE TRAJECTORY</span>
-        <button class="icon-btn" id="cesium-close">✕</button>
-      </div>
-      <div id="cesiumContainer"></div>
-      <div class="modal-foot" id="cesium-status">Initializing Cesium…</div>
-    </div>
+    <div id="toast-stack"></div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.124.0/Cesium.js"></script>
-  <script src="js/wfo-data.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
