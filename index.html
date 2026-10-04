@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="description" content="EONETXPLR — Mission-critical global natural event tracker with live ISS position, earthquakes, hazards and multi-source intelligence layers." />
+  <meta name="description" content="EONETXPLR — Mission-critical global natural event tracker with NEXRAD, NWS alerts, ISS 3D globe and multi-source intelligence." />
   <meta name="theme-color" content="#070a10" />
   <title>EONETXPLR — Global Intelligence Platform</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='%23f59e0b' stroke-width='6'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%23f59e0b'/%3E%3C/svg%3E" />
@@ -11,10 +11,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.124.0/Widgets/widgets.min.css" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <!-- BOOT / SPLASH (OSIRIS-inspired) -->
   <div id="boot-screen" aria-live="polite">
     <div class="boot-inner">
       <div class="boot-logo">
@@ -30,67 +30,50 @@
       <p class="boot-sub">GLOBAL NATURAL EVENT &amp; ORBITAL INTELLIGENCE</p>
       <div class="boot-bar"><div class="boot-progress" id="boot-progress"></div></div>
       <p class="boot-status" id="boot-status">CALIBRATING SENSORS…</p>
-      <p class="boot-meta">V2.0 · NASA EONET · OPEN SOURCE</p>
+      <p class="boot-meta">V2.1 · NASA EONET · NWS · NEXRAD · ISS</p>
     </div>
   </div>
 
-  <!-- APP SHELL -->
   <div id="app" class="hidden" role="application">
-    <!-- TOP STATUS BAR -->
     <header id="topbar">
       <div class="brand">
         <span class="brand-mark"></span>
         <span class="brand-name">EONETXPLR</span>
-        <span class="brand-ver">V2.0</span>
+        <span class="brand-ver">V2.1</span>
       </div>
       <div class="status-cluster">
-        <div class="stat" title="Open EONET events">
-          <span class="stat-label">OPEN</span>
-          <span class="stat-val" id="stat-open">—</span>
-        </div>
-        <div class="stat" title="Events currently shown on map">
-          <span class="stat-label">SHOWN</span>
-          <span class="stat-val" id="stat-shown">—</span>
-        </div>
-        <div class="stat" title="Active map layers">
-          <span class="stat-label">LAYERS</span>
-          <span class="stat-val" id="stat-layers">0</span>
-        </div>
-        <div class="stat" title="Tracked entities (events + ISS + quakes)">
-          <span class="stat-label">ENTITIES</span>
-          <span class="stat-val" id="stat-entities">0</span>
-        </div>
+        <div class="stat"><span class="stat-label">OPEN</span><span class="stat-val" id="stat-open">—</span></div>
+        <div class="stat"><span class="stat-label">SHOWN</span><span class="stat-val" id="stat-shown">—</span></div>
+        <div class="stat"><span class="stat-label">NWS</span><span class="stat-val" id="stat-nws">—</span></div>
+        <div class="stat"><span class="stat-label">LAYERS</span><span class="stat-val" id="stat-layers">0</span></div>
+        <div class="stat"><span class="stat-label">ENTITIES</span><span class="stat-val" id="stat-entities">0</span></div>
       </div>
       <div class="clock-cluster">
-        <div class="clock" id="clock-zulu" title="Coordinated Universal Time">00:00:00<span>Z</span></div>
+        <div class="clock" id="clock-zulu">00:00:00<span>Z</span></div>
         <div class="api-status" id="api-status" data-state="connecting">
-          <span class="dot"></span>
-          <span id="api-status-text">CONNECTING</span>
+          <span class="dot"></span><span id="api-status-text">CONNECTING</span>
         </div>
       </div>
       <div class="top-actions">
-        <select id="autorefresh-select" class="ctrl-select" title="Auto-refresh interval">
+        <select id="autorefresh-select" class="ctrl-select" title="Auto-refresh">
           <option value="0">Manual</option>
           <option value="60">1 min</option>
-          <option value="180" selected>3 min</option>
+          <option value="120" selected>2 min</option>
+          <option value="180">3 min</option>
           <option value="300">5 min</option>
-          <option value="600">10 min</option>
         </select>
-        <button class="icon-btn" id="btn-refresh" title="Soft refresh (preserve view)">⟳</button>
-        <button class="icon-btn" id="btn-alerts" title="Toggle audio alerts" aria-pressed="false">🔔</button>
-        <button class="icon-btn" id="btn-fullscreen" title="Toggle fullscreen">⛶</button>
+        <button class="icon-btn" id="btn-refresh" title="Soft refresh">⟳</button>
+        <button class="icon-btn" id="btn-alerts" title="Three-tone audio alerts" aria-pressed="true">🔔</button>
+        <button class="icon-btn" id="btn-fullscreen" title="Fullscreen">⛶</button>
       </div>
     </header>
 
-    <main id="main">
-      <!-- LEFT PANEL -->
+    <main id="main" class="cols-4">
       <aside id="left-panel" class="panel">
         <div class="panel-section">
-          <div class="section-head">
-            <h2>Search &amp; Filters</h2>
-          </div>
+          <div class="section-head"><h2>Search &amp; Filters</h2></div>
           <input type="search" id="search-input" class="search-box" placeholder="Search event titles…" autocomplete="off" />
-          <div class="seg-control" id="status-seg" role="group" aria-label="Event status">
+          <div class="seg-control" id="status-seg">
             <button data-status="open" class="active">Open</button>
             <button data-status="closed">Closed</button>
             <button data-status="all">All</button>
@@ -98,16 +81,12 @@
           <div class="field-row">
             <label for="days-select">Lookback</label>
             <select id="days-select" class="ctrl-select">
-              <option value="7">7 days</option>
-              <option value="14">14 days</option>
-              <option value="30" selected>30 days</option>
-              <option value="60">60 days</option>
-              <option value="90">90 days</option>
-              <option value="180">180 days</option>
+              <option value="7">7d</option><option value="14">14d</option>
+              <option value="30" selected>30d</option><option value="60">60d</option>
+              <option value="90">90d</option>
             </select>
           </div>
         </div>
-
         <div class="panel-section">
           <div class="section-head">
             <h2>Categories</h2>
@@ -115,55 +94,35 @@
           </div>
           <div id="category-list" class="checkbox-list"></div>
         </div>
-
         <div class="panel-section">
-          <div class="section-head">
-            <h2>Intelligence Layers</h2>
-          </div>
+          <div class="section-head"><h2>Intelligence Layers</h2></div>
           <div class="layer-toggles">
-            <label class="layer-row">
-              <input type="checkbox" id="layer-eonet" checked />
-              <span class="layer-swatch eonet"></span>
-              <span>EONET Natural Events</span>
-              <span class="layer-count" id="count-eonet">0</span>
-            </label>
-            <label class="layer-row">
-              <input type="checkbox" id="layer-usgs" checked />
-              <span class="layer-swatch usgs"></span>
-              <span>USGS Earthquakes (24h)</span>
-              <span class="layer-count" id="count-usgs">0</span>
-            </label>
-            <label class="layer-row">
-              <input type="checkbox" id="layer-gdacs" />
-              <span class="layer-swatch gdacs"></span>
-              <span>GDACS Global Hazards</span>
-              <span class="layer-count" id="count-gdacs">0</span>
-            </label>
-            <label class="layer-row">
-              <input type="checkbox" id="layer-iss" checked />
-              <span class="layer-swatch iss"></span>
-              <span>ISS Live Position</span>
-              <span class="layer-count" id="count-iss">1</span>
-            </label>
-            <label class="layer-row">
-              <input type="checkbox" id="layer-iss-trail" checked />
-              <span class="layer-swatch trail"></span>
-              <span>ISS Ground Track</span>
-            </label>
+            <label class="layer-row"><input type="checkbox" id="layer-eonet" checked /><span class="layer-swatch eonet"></span>EONET Events<span class="layer-count" id="count-eonet">0</span></label>
+            <label class="layer-row"><input type="checkbox" id="layer-nws" checked /><span class="layer-swatch nws"></span>NWS Active Alerts<span class="layer-count" id="count-nws">0</span></label>
+            <label class="layer-row"><input type="checkbox" id="layer-nexrad" /><span class="layer-swatch nexrad"></span>NEXRAD Radar</label>
+            <label class="layer-row"><input type="checkbox" id="layer-usgs" checked /><span class="layer-swatch usgs"></span>USGS Quakes (24h)<span class="layer-count" id="count-usgs">0</span></label>
+            <label class="layer-row"><input type="checkbox" id="layer-gdacs" /><span class="layer-swatch gdacs"></span>GDACS Hazards<span class="layer-count" id="count-gdacs">0</span></label>
+            <label class="layer-row"><input type="checkbox" id="layer-iss" checked /><span class="layer-swatch iss"></span>ISS Live<span class="layer-count" id="count-iss">1</span></label>
+            <label class="layer-row"><input type="checkbox" id="layer-iss-trail" checked /><span class="layer-swatch trail"></span>ISS Ground Track</label>
           </div>
+          <div class="field-row" style="margin-top:8px">
+            <label>NEXRAD product</label>
+            <select id="nexrad-product" class="ctrl-select">
+              <option value="nexrad-n0q-900913">Base Reflectivity (N0Q)</option>
+              <option value="nexrad-n0r-900913">Base Reflectivity (N0R)</option>
+            </select>
+          </div>
+          <button class="btn full" id="btn-sample-grid" style="margin-top:10px" title="Load NWS gridpoint layers for map center">Sample Gridpoint (map center)</button>
+          <p class="hint" style="margin-top:6px;font-size:10px">Or click anywhere on the map to load temperature, PoP, wind &amp; more from api.weather.gov/gridpoints</p>
         </div>
-
         <div class="panel-section compact">
           <button class="btn primary full" id="btn-apply">Apply Filters</button>
           <button class="btn ghost full" id="btn-reset">Reset All</button>
         </div>
       </aside>
 
-      <!-- MAP -->
       <section id="map-wrap">
-        <div id="map" role="img" aria-label="Interactive world map of natural events and ISS"></div>
-
-        <!-- Floating map controls -->
+        <div id="map" role="img" aria-label="Interactive world map"></div>
         <div class="map-float top-left">
           <div class="chip-bar">
             <span class="chip" id="chip-status">OPEN</span>
@@ -171,23 +130,19 @@
             <span class="chip" id="chip-count">0 events</span>
           </div>
         </div>
-
         <div class="map-float top-right">
           <div class="basemap-switcher" id="basemap-switcher">
             <button data-base="dark" class="active">DARK</button>
             <button data-base="sat">SAT</button>
             <button data-base="topo">TOPO</button>
           </div>
-          <button class="icon-btn map-btn" id="btn-fit" title="Fit all visible events">⊙</button>
-          <button class="icon-btn map-btn" id="btn-home" title="Reset to world view">⌂</button>
+          <button class="icon-btn map-btn" id="btn-fit" title="Fit events">⊙</button>
+          <button class="icon-btn map-btn" id="btn-home" title="World view">⌂</button>
         </div>
-
         <div class="map-float bottom-left" id="legend-box">
           <div class="legend-title">LEGEND</div>
           <div id="legend-rows"></div>
         </div>
-
-        <!-- ISS HUD (Hamchron-inspired) -->
         <div class="map-float bottom-right" id="iss-hud">
           <div class="iss-hud-head">
             <span class="iss-label">ISS</span>
@@ -202,36 +157,29 @@
             <div><span class="lbl">VEL</span> <span id="iss-vel">—</span> km/h</div>
           </div>
           <div class="iss-crew" id="iss-crew">Crew: —</div>
+          <button class="btn primary full" id="btn-iss-3d" style="margin-top:8px;font-size:11px">Open 3D Globe</button>
         </div>
       </section>
 
-      <!-- RIGHT PANEL -->
       <aside id="right-panel" class="panel">
         <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="feed" role="tab">Feed</button>
-          <button class="tab" data-tab="detail" role="tab">Detail</button>
-          <button class="tab" data-tab="iss" role="tab">ISS / Crew</button>
+          <button class="tab active" data-tab="feed">Feed</button>
+          <button class="tab" data-tab="detail">Detail</button>
+          <button class="tab" data-tab="iss">ISS</button>
         </div>
-
         <div class="tab-panels">
-          <div class="tab-panel active" id="panel-feed" role="tabpanel">
-            <div class="feed-banner" id="feed-banner">
-              <span id="feed-label">Live stream · Open events</span>
-            </div>
+          <div class="tab-panel active" id="panel-feed">
+            <div class="feed-banner"><span id="feed-label">Live stream · Open events</span></div>
             <div id="event-list" class="event-list"></div>
           </div>
-
-          <div class="tab-panel" id="panel-detail" role="tabpanel">
-            <div id="detail-empty" class="empty-state">
-              <p>Select an event from the feed or map to inspect telemetry, sources and geometry.</p>
-            </div>
+          <div class="tab-panel" id="panel-detail">
+            <div id="detail-empty" class="empty-state"><p>Select an event from the feed or map.</p></div>
             <div id="detail-content" class="detail-content hidden"></div>
           </div>
-
-          <div class="tab-panel" id="panel-iss" role="tabpanel">
+          <div class="tab-panel" id="panel-iss">
             <div class="iss-panel">
               <h3>International Space Station</h3>
-              <p class="hint">Live orbital data · Updates every 5–8 s</p>
+              <p class="hint">Live orbital data · Updates ~6 s</p>
               <div class="iss-card">
                 <div class="iss-big-coords">
                   <div><span>Latitude</span><strong id="iss-lat2">—</strong></div>
@@ -244,20 +192,69 @@
                   <div><span>Footprint</span><strong id="iss-foot">—</strong></div>
                 </div>
               </div>
+              <button class="btn primary full" id="btn-iss-3d-2" style="margin:12px 0">Launch 3D Globe + Trajectory</button>
               <h4>People Currently in Space</h4>
               <ul id="crew-list" class="crew-list"></ul>
-              <p class="hint small">Data: Where The ISS At + Open Notify (astros)</p>
+              <p class="hint small">Sources: WhereTheISS.at · Open Notify</p>
             </div>
           </div>
         </div>
       </aside>
-    </main>
 
-    <!-- TOAST STACK -->
+      <aside id="nws-panel" class="panel">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-nwstab="stations">WFO Stations</button>
+          <button class="tab" data-nwstab="alerts">NWS Alerts</button>
+        </div>
+        <div class="tab-panels">
+          <div class="tab-panel active" id="panel-stations">
+            <div class="panel-section" style="border:none;padding-bottom:6px">
+              <input type="search" id="wfo-search" class="search-box" placeholder="Filter by state or code…" />
+            </div>
+            <div id="wfo-list" class="wfo-list"></div>
+            <div id="wfo-detail" class="wfo-detail hidden">
+              <div class="wfo-detail-head">
+                <strong id="wfo-detail-name">—</strong>
+                <button class="text-btn" id="wfo-back">← Back</button>
+              </div>
+              <button class="btn full" id="wfo-zoom">Zoom map to office</button>
+              <button class="btn full" id="wfo-ping" style="margin-top:6px">Ping for latest products</button>
+              <div id="wfo-products" class="wfo-products"></div>
+            </div>
+          </div>
+          <div class="tab-panel" id="panel-alerts">
+            <div class="panel-section" style="border:none;padding-bottom:6px">
+              <input type="search" id="nws-alert-search" class="search-box" placeholder="Search alerts (Tornado, Flood…)" />
+              <div class="seg-control" id="nws-sev-seg">
+                <button data-sev="all" class="active">All</button>
+                <button data-sev="Extreme">Extreme</button>
+                <button data-sev="Severe">Severe</button>
+                <button data-sev="Moderate">Mod</button>
+              </div>
+            </div>
+            <div id="nws-alert-list" class="event-list"></div>
+          </div>
+        </div>
+      </aside>
+    </main>
     <div id="toast-stack" aria-live="polite"></div>
   </div>
 
+  <div id="cesium-modal" class="modal hidden">
+    <div class="modal-backdrop" id="cesium-close-bg"></div>
+    <div class="modal-panel">
+      <div class="modal-head">
+        <span>ISS 3D GLOBE · LIVE TRAJECTORY</span>
+        <button class="icon-btn" id="cesium-close">✕</button>
+      </div>
+      <div id="cesiumContainer"></div>
+      <div class="modal-foot" id="cesium-status">Initializing Cesium…</div>
+    </div>
+  </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cesium/1.124.0/Cesium.js"></script>
+  <script src="js/wfo-data.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

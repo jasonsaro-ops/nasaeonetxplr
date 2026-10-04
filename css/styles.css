@@ -866,3 +866,128 @@ html, body {
   }
   .status-cluster { display: none; }
 }
+
+/* ── V2.1 additions: 4-column layout, NWS panel, Cesium modal ── */
+#main.cols-4 {
+  grid-template-columns: 260px 1fr 260px 280px;
+}
+#nws-panel {
+  border-left: 1px solid var(--line);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.layer-swatch.nws { background: #eab308; }
+.layer-swatch.nexrad { background: #22c55e; }
+
+.wfo-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 6px;
+}
+.wfo-item {
+  padding: 7px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  border: 1px solid transparent;
+}
+.wfo-item:hover { background: var(--bg-hover); }
+.wfo-item .code {
+  font-family: var(--font-mono);
+  color: var(--cyan);
+  font-size: 11px;
+}
+.wfo-item .state { color: var(--text-dim); font-size: 10px; }
+.wfo-detail {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  overflow-y: auto;
+  flex: 1;
+}
+.wfo-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.wfo-products {
+  margin-top: 12px;
+  font-size: 11px;
+}
+.wfo-products .prod {
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.wfo-products a { color: var(--cyan); text-decoration: none; }
+.wfo-products a:hover { text-decoration: underline; }
+
+/* Modal / Cesium */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal.hidden { display: none; }
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+}
+.modal-panel {
+  position: relative;
+  width: min(1100px, 96vw);
+  height: min(720px, 90vh);
+  background: var(--bg-panel);
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--cyan);
+}
+#cesiumContainer {
+  flex: 1;
+  min-height: 0;
+  background: #000;
+}
+.modal-foot {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 1400px) {
+  #main.cols-4 { grid-template-columns: 240px 1fr 240px 250px; }
+}
+@media (max-width: 1100px) {
+  #main.cols-4 {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+  #left-panel, #right-panel, #nws-panel { display: none; }
+}

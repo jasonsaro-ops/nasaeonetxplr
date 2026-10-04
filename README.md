@@ -1,80 +1,53 @@
-# EONETXPLR V2.0
+# EONETXPLR V2.1
 
-**Mission-critical global natural event & orbital intelligence platform**
+Mission-critical global natural event & orbital intelligence platform.
 
-A complete rebuild of the NASA EONET explorer with an OSIRIS-inspired dark intelligence aesthetic and live ISS tracking (Hamchron-style).
+## What’s new in 2.1
 
-![Status](https://img.shields.io/badge/status-operational-22c55e)
-![Static](https://img.shields.io/badge/hosting-GitHub%20Pages-blue)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+- **Free basemaps** (no API key) — Carto Dark / Esri Imagery / OpenTopoMap / OSM fallback
+- **NEXRAD radar** via Iowa Environmental Mesonet WMS (Base Reflectivity)
+- **NWS active alerts** nationwide with search + severity filter + map polygons
+- **WFO Stations column** — all NWS Weather Forecast Offices by state, zoom-to-office, ping for latest products & local alerts
+- **Four-column layout** — Filters | Map | Feed/Detail/ISS | NWS Stations + Alerts
+- **Three-tone audio** on new EONET events and new Extreme/Severe NWS alerts
+- **Default 2-minute auto-refresh**
+- **ISS 3D globe** (CesiumJS) with live position + ground-track trajectory when ISS is clicked or “Open 3D Globe” is used
+- Restored previous sources: EONET, NWS, NEXRAD, USGS, GDACS, ISS, crew roster
+- **NWS Gridpoint layers** (api.weather.gov/gridpoints) — click map or “Sample Gridpoint” to load temperature, dewpoint, apparent temp, PoP, QPF, wind, gust, sky cover, humidity, weather, hazards, max/min for that 2.5 km cell
 
-## Features
+## Deploy on GitHub Pages
 
-- **NASA EONET v3** — open/closed events, categories, sources, geometry tracks & polygons
-- **Live ISS position** — altitude, velocity, visibility, footprint + ground track trail
-- **People in Space** — current crew roster
-- **USGS Earthquakes** — M2.5+ past 24 h
-- **GDACS Global Hazards** (optional layer)
-- Dark cyber / OSINT UI with Zulu clock, entity counters, audio alerts
-- Soft auto-refresh, retry logic, degraded-mode indicators
-- Fully static — no backend required
+1. Push the contents of this folder to a repo (root or `/docs`).
+2. Settings → Pages → select branch/folder.
+3. Done. No build, no keys required for core features.
 
-## Quick Start (GitHub Pages)
-
-1. Create a new repository (or push into an existing one).
-2. Upload the contents of this folder (`index.html`, `css/`, `js/`) to the root or a `/docs` folder.
-3. In **Settings → Pages**, set the source to the branch and folder you used.
-4. Visit `https://<you>.github.io/<repo>/`.
-
-No build step. No API keys required for core functionality.
-
-## Local Preview
+## Local
 
 ```bash
-# any static server
 npx serve .
 # or
 python -m http.server 8080
 ```
 
-Open `http://localhost:8080`.
+## Data sources
 
-## Data Sources
+| Layer / Feature | Source |
+|-----------------|--------|
+| EONET events | eonet.gsfc.nasa.gov/api/v3 |
+| NWS alerts | api.weather.gov/alerts/active |
+| NWS offices | api.weather.gov/offices/{code} |
+| NEXRAD | mesonet.agron.iastate.edu WMS |
+| USGS quakes | earthquake.usgs.gov GeoJSON |
+| GDACS | gdacs.org API |
+| ISS position | api.wheretheiss.at |
+| People in space | api.open-notify.org/astros.json |
+| NWS Gridpoints | api.weather.gov/points + /gridpoints/{wfo}/{x},{y} |
 
-| Layer        | Endpoint / Source                                      |
-|--------------|--------------------------------------------------------|
-| EONET        | `https://eonet.gsfc.nasa.gov/api/v3`                   |
-| USGS Quakes  | USGS GeoJSON feed (2.5_day)                            |
-| ISS          | `https://api.wheretheiss.at/v1/satellites/25544`       |
-| Crew         | Open Notify `/astros.json` (via CORS proxy if needed)  |
-| GDACS        | GDACS public MAP endpoint (may require proxy)          |
+## Notes
 
-## Keyboard / UX Notes
-
-- Click any event card or map marker to inspect detail & fly the map.
-- Toggle layers independently; ISS trail persists the last ~90 samples.
-- Audio alerts fire when new EONET events appear while enabled.
-- Fullscreen button available in the top bar.
-
-## Architecture
-
-```
-index.html          — shell + boot splash
-css/styles.css      — complete design system
-js/app.js           — all application logic (IIFE, no build tools)
-```
-
-Designed for long-term maintainability and zero-dependency deployment.
-
-## Roadmap Ideas
-
-- NEXRAD / NWS alert polygons
-- SPC convective outlooks
-- Satellite imagery overlays (EONET layers API)
-- Offline cache via service worker
-- Shareable deep links (`?event=EONET_xxxx`)
-
----
+- Carto dark tiles are preferred; if a watermark appears in the future, switch to the OSM / SAT / TOPO buttons (all key-free).
+- Cesium runs without an Ion token (ellipsoid + OSM imagery).
+- Three-tone alert uses Web Audio API (853/960 Hz style).
+- MONTCO-specific ReadyMontco feed is not publicly available as an open API; PHI (Philadelphia/Mt Holly) WFO covers Montgomery County, PA — use the WFO panel and NWS alerts for that region.
 
 Built for operators who need situational awareness at a glance.
-Data remains the property of the respective agencies (NASA, USGS, etc.).
