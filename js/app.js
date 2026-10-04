@@ -24,6 +24,7 @@
     NWS_ALERTS: 'https://api.weather.gov/alerts/active?status=actual&message_type=alert',
     NWS_OFFICE: (code) => `https://api.weather.gov/offices/${code}`,
     NWS_PRODUCTS: (code) => `https://api.weather.gov/products/types/AFD/locations/${code}`,
+    NWS_PRODUCTS_ALL: (code) => `https://api.weather.gov/products?location=${code}&limit=20`,
     NEXRAD_WMS: 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',
     NWS_POINTS: (lat, lon) => `https://api.weather.gov/points/${lat},${lon}`,
     PROXY: 'https://api.allorigins.win/raw?url=',
@@ -156,7 +157,7 @@
   // ── MAP (free no-key tiles) ──
   function initMap() {
     state.map = L.map('map', {
-      center: [28, -40], zoom: 3, minZoom: 2, maxZoom: 12,
+      center: [28, -40], zoom: 3, minZoom: 2, maxZoom: 18,
       zoomControl: true, worldCopyJump: true,
     });
 
@@ -912,13 +913,22 @@
     } catch (_) {}
 
     try {
-      const prods = await fetchJson(CFG.NWS_PRODUCTS(code));
-      const list = (prods['@graph'] || prods.products || []).slice(0, 8);
+      let list = [];
+      try {
+        const all = await fetchJson(CFG.NWS_PRODUCTS_ALL(code));
+        list = (all['@graph'] || all.products || []).slice(0, 15);
+      } catch (_) {
+        const prods = await fetchJson(CFG.NWS_PRODUCTS(code));
+        list = (prods['@graph'] || prods.products || []).slice(0, 12);
+      }
       if (list.length) {
         html += '<div class="wfo-section-title" style="margin-top:10px">RECENT PRODUCTS</div>';
-        list.forEach(p => {
-          html += `<div class="prod"><a href="${p['@id'] || p.url || '#'}" target="_blank" rel="noopener">${escapeHtml(p.productName || p.id || 'Product')}</a>
-            <div style="color:var(--text-dim);font-size:10px">${p.issuanceTime ? p.issuanceTime.slice(0,16) : ''}Z</div></div>`;
+        list.forEach((p, i) => {
+          const pid = p['@id'] || p.url || '';
+          html += `<div class="prod prod-clickable" data-product-url="${escapeHtml(pid)}" data-product-name="${escapeHtml(p.productName || p.id || 'Product')}">
+            <strong>${escapeHtml(p.productName || p.id || 'Product')}</strong>
+            <div style="color:var(--text-dim);font-size:10px">${p.issuanceTime ? p.issuanceTime.slice(0,16) : ''}Z · click to open</div>
+          </div>`;
         });
       }
     } catch (_) {}
@@ -931,6 +941,21 @@
         const id = card.dataset.alertId;
         const f = (state._wfoAlerts || []).find(x => (x.id || '') === id);
         if (f) openAlertFloat(f);
+      });
+    });
+    // Product cards → fetch full text and show in float
+    $('#wfo-products').querySelectorAll('.prod-clickable').forEach(card => {
+      card.addEventListener('click', async () => {
+        const url = card.dataset.productUrl;
+        const name = card.dataset.productName || 'Product';
+        if (!url) return;
+        toast('Loading product…');
+        try {
+          const data = await fetchJson(url);
+          openProductFloat(data, name);
+        } catch (e) {
+          toast('Could not load product text', 'error');
+        }
       });
     });
   }
@@ -1055,6 +1080,108 @@
     });
   }
 
+
+  function openProductFloat(data, name) {
+    const prev = document.getElementById('alert-float');
+    if (prev) prev.remove();
+
+    const text = data.productText || data.productContent || JSON.stringify(data, null, 2);
+    // Clean up common NWS product formatting
+    let body = escapeHtml(text)
+      .replace(/\\n/g, '\n')
+      .replace(/\n/g, '<br>')
+      .replace(/&amp;/g, '&');
+    // Highlight KEY MESSAGES / WARNING style headers
+    body = body.replace(/(KEY MESSAGES?|DISCUSSION|AVIATION|MARINE|FIRE WEATHER|HYDROLOGY|SYNOPSIS)/gi,
+      '<span style="color:var(--amber);font-weight:600">$1</span>');
+    body = body.replace(/(WARNING|WATCH|ADVISORY|STATEMENT)/gi,
+      '<span style="color:#fca5a5;font-weight:600">$1</span>');
+
+    const el = document.createElement('div');
+    el.id = 'alert-float';
+    el.className = 'alert-float product-float';
+    el.innerHTML = `
+      <div class="alert-float-head" style="border-top:3px solid var(--cyan)">
+        <div>
+          <strong>${escapeHtml(name)}</strong>
+          <span class="sev-badge" style="background:rgba(6,182,212,0.15);color:var(--cyan);border:1px solid rgba(6,182,212,0.35)">${escapeHtml(data.productCode || 'PRODUCT')}</span>
+        </div>
+        <button class="icon-btn" id="alert-float-close">✕</button>
+      </div>
+      <div class="alert-float-body product-body">
+        <div class="alert-float-meta" style="font-size:11px;color:var(--text-dim);margin-bottom:10px">
+          ${data.issuingOffice ? 'Office: ' + escapeHtml(data.issuingOffice) + ' · ' : ''}
+          ${data.issuanceTime ? data.issuanceTime.slice(0,16) + 'Z' : ''}
+        </div>
+        <div class="product-text">${body}</div>
+        ${data['@id'] ? `<div style="margin-top:12px"><a class="btn ghost" href="${data['@id']}" target="_blank" rel="noopener">Official product →</a></div>` : ''}
+      </div>
+    `;
+    document.body.appendChild(el);
+    document.getElementById('alert-float-close').onclick = () => el.remove();
+  }
+
+  function openWindyOverlay(layer) {
+    const c = state.map.getCenter();
+    const z = Math.min(state.map.getZoom(), 11);
+    const overlays = {
+      wind: 'wind', temp: 'temp', rain: 'rain', clouds: 'clouds',
+      pressure: 'pressure', radar: 'radar', satellite: 'satellite',
+      thunder: 'thunder', humidity: 'rh', gust: 'gust',
+      waves: 'waves', snow: 'snow', dewpoint: 'dewpoint',
+      cape: 'cape', visibility: 'visibility',
+    };
+    const ov = overlays[layer] || layer || 'radar';
+    const url = `https://embed.windy.com/embed2.html?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}&zoom=${z}&level=surface&overlay=${ov}&product=ecmwf&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
+
+    let modal = document.getElementById('windy-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'windy-modal';
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <div class="modal-backdrop" id="windy-close-bg"></div>
+        <div class="modal-panel" style="width:min(1200px,96vw);height:min(800px,92vh)">
+          <div class="modal-head">
+            <span>WINDY · <span id="windy-layer-label">${ov.toUpperCase()}</span></span>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <select id="windy-layer-select" class="ctrl-select" style="font-size:11px">
+                <option value="radar">Radar</option>
+                <option value="satellite">Satellite</option>
+                <option value="wind">Wind</option>
+                <option value="temp">Temperature</option>
+                <option value="rain">Rain / Snow</option>
+                <option value="clouds">Clouds</option>
+                <option value="pressure">Pressure</option>
+                <option value="thunder">Thunderstorms</option>
+                <option value="gust">Wind Gusts</option>
+                <option value="humidity">Humidity</option>
+                <option value="dewpoint">Dewpoint</option>
+                <option value="cape">CAPE</option>
+                <option value="snow">Snow cover</option>
+                <option value="waves">Waves</option>
+                <option value="visibility">Visibility</option>
+              </select>
+              <button class="icon-btn" id="windy-close">✕</button>
+            </div>
+          </div>
+          <iframe id="windy-frame" style="flex:1;border:none;width:100%;min-height:0;background:#000" allowfullscreen></iframe>
+          <div class="modal-foot">Powered by Windy.com embed · Syncs to current map center</div>
+        </div>`;
+      document.body.appendChild(modal);
+      document.getElementById('windy-close').onclick = () => modal.classList.add('hidden');
+      document.getElementById('windy-close-bg').onclick = () => modal.classList.add('hidden');
+      document.getElementById('windy-layer-select').onchange = (e) => {
+        openWindyOverlay(e.target.value);
+      };
+    }
+    modal.classList.remove('hidden');
+    document.getElementById('windy-layer-label').textContent = ov.toUpperCase();
+    document.getElementById('windy-layer-select').value = ov;
+    document.getElementById('windy-frame').src = url;
+  }
+
+
   function closeCesium() {
     $('#cesium-modal').classList.add('hidden');
   }
@@ -1128,6 +1255,7 @@
       toast(`Sampling gridpoint at map center…`);
       loadGridpoint(c.lat, c.lng);
     });
+    $('#btn-windy')?.addEventListener('click', () => openWindyOverlay('radar'));
 
     $('#btn-apply').addEventListener('click', async () => { await loadEvents(); toast('Filters applied', 'success'); });
     $('#btn-reset').addEventListener('click', () => {
