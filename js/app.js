@@ -94,6 +94,22 @@
   }
   function catColor(t) { return CAT_COLORS[t] || '#f59e0b'; }
 
+  function severityColor(sev) {
+    const s = (sev || '').toLowerCase();
+    if (s === 'extreme') return '#ef4444';
+    if (s === 'severe') return '#f97316';
+    if (s === 'moderate') return '#eab308';
+    if (s === 'minor') return '#22c55e';
+    return '#94a3b8';
+  }
+
+  function severityBadge(sev) {
+    const c = severityColor(sev);
+    return `<span class="sev-badge" style="background:${c}22;color:${c};border:1px solid ${c}55">${escapeHtml(sev || 'Unknown')}</span>`;
+  }
+
+
+
   // Three-tone EAS-style alert (853 Hz / 960 Hz pattern simplified)
   function playThreeTone() {
     if (!state.alertsEnabled) return;
@@ -144,14 +160,10 @@
       zoomControl: true, worldCopyJump: true,
     });
 
-    // Free, no API key required
-    const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19,
-      // Note: if watermark appears, CARTO now requires key — fallback to OSM below is automatic on error
-    });
-    // Guaranteed free fallbacks
-    const osmDark = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap', maxZoom: 19, className: 'osm-dark-tiles',
+    // Guaranteed free, no API key tiles
+    // DARK = OSM tiles + CSS invert filter (no key, no watermark)
+    const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap', maxZoom: 19,
     });
     const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Esri, Maxar', maxZoom: 19,
@@ -160,32 +172,11 @@
       attribution: 'OpenTopoMap', maxZoom: 17,
     });
 
-    // Prefer Carto dark; if it fails users can switch. Primary free set:
-    state.basemaps = {
-      dark: L.layerGroup([
-        L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
-          attribution: '© Stadia © OSM', maxZoom: 20,
-        }).on('tileerror', function() {
-          // silent fallback handled by user switching or we swap
-        })
-      ]),
-      // Actually use reliable free tiles as primary
-    };
-
-    // Override with guaranteed free tiles
-    const freeDark = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors', maxZoom: 19,
-    });
-    // Better dark free option that still works without key for many users
-    const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OSM © CARTO', subdomains: 'abcd', maxZoom: 19,
-    });
-
-    state.basemaps = { dark: cartoDark, sat, topo, osm: freeDark };
-    cartoDark.addTo(state.map);
-
-    // If Carto starts watermarking, user can switch to OSM via a hidden option; we also add OSM as selectable via code
-    // For robustness we keep OSM available by re-using dark button long-press later if needed
+    state.basemaps = { dark: osm, sat, topo };
+    osm.addTo(state.map);
+    // Apply dark filter to tile pane for DARK mode
+    const tilePane = state.map.getPane('tilePane');
+    if (tilePane) tilePane.style.filter = 'invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9)';
 
     state.layersGroup.eonet = L.layerGroup().addTo(state.map);
     state.layersGroup.nws = L.layerGroup().addTo(state.map);
@@ -200,8 +191,14 @@
         btn.classList.add('active');
         Object.values(state.basemaps).forEach(l => { if (state.map.hasLayer(l)) state.map.removeLayer(l); });
         const key = btn.dataset.base;
-        if (state.basemaps[key]) state.basemaps[key].addTo(state.map);
-        else state.basemaps.osm.addTo(state.map);
+        const layer = state.basemaps[key] || state.basemaps.dark;
+        layer.addTo(state.map);
+        // Dark filter only for dark mode
+        const pane = state.map.getPane('tilePane');
+        if (pane) {
+          if (key === 'dark') pane.style.filter = 'invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9)';
+          else pane.style.filter = '';
+        }
       });
     });
 
@@ -308,20 +305,23 @@
     list.innerHTML = state.nwsFiltered.slice(0, 200).map(f => {
       const p = f.properties || {};
       const sev = p.severity || '';
-      const color = sev === 'Extreme' ? '#ef4444' : sev === 'Severe' ? '#f97316' : '#eab308';
-      return `<div class="event-card" data-alert="${escapeHtml(f.id||'')}">
-        <div class="etitle" style="border-left:3px solid ${color};padding-left:6px">${escapeHtml(p.event||p.headline||'Alert')}</div>
-        <div class="emeta"><span>${escapeHtml(p.severity||'')}</span><span>${escapeHtml((p.areaDesc||'').slice(0,60))}</span></div>
+      const color = severityColor(sev);
+      return `<div class="event-card alert-list-card" data-alert="${escapeHtml(f.id || '')}" style="border-left:3px solid ${color}">
+        <div class="etitle">${escapeHtml(p.event || p.headline || 'Alert')} ${severityBadge(sev)}</div>
+        <div class="emeta"><span>${escapeHtml((p.areaDesc || '').slice(0,55))}</span></div>
       </div>`;
     }).join('');
-    list.querySelectorAll('.event-card').forEach(card => {
+    list.querySelectorAll('.alert-list-card').forEach(card => {
       card.addEventListener('click', () => {
-        const f = state.nwsAlerts.find(x => (x.id||'') === card.dataset.alert);
-        if (f && f.geometry) {
-          try {
-            const layer = L.geoJSON(f);
-            state.map.fitBounds(layer.getBounds(), { padding:[30,30], maxZoom:8 });
-          } catch(_) {}
+        const f = state.nwsAlerts.find(x => (x.id || '') === card.dataset.alert);
+        if (f) {
+          openAlertFloat(f);
+          if (f.geometry) {
+            try {
+              const layer = L.geoJSON(f);
+              state.map.fitBounds(layer.getBounds(), { padding: [30,30], maxZoom: 8 });
+            } catch(_) {}
+          }
         }
       });
     });
@@ -333,13 +333,15 @@
     state.nwsAlerts.forEach(f => {
       if (!f.geometry) return;
       const sev = (f.properties || {}).severity || '';
-      const color = sev === 'Extreme' ? '#ef4444' : sev === 'Severe' ? '#f97316' : '#eab308';
+      const color = severityColor(sev);
       L.geoJSON(f, {
-        style: { color, weight: 1.5, fillOpacity: 0.18, fillColor: color },
+        style: { color, weight: 1.5, fillOpacity: 0.2, fillColor: color },
         onEachFeature: (feat, layer) => {
           const p = feat.properties || {};
+          layer.on('click', () => openAlertFloat(feat));
           layer.bindPopup(`<div class="popup-title">${escapeHtml(p.event||'')}</div>
-            <div class="popup-meta">${escapeHtml(p.severity||'')} · ${escapeHtml((p.areaDesc||'').slice(0,80))}</div>`);
+            <div class="popup-meta">${escapeHtml(p.severity||'')} · ${escapeHtml((p.areaDesc||'').slice(0,80))}</div>
+            <div style="margin-top:4px;font-size:10px;color:var(--cyan)">Click for full alert</div>`);
         }
       }).addTo(state.layersGroup.nws);
     });
@@ -860,44 +862,126 @@
     $('#wfo-list').classList.add('hidden');
     $('#wfo-detail').classList.remove('hidden');
     $('#wfo-detail-name').textContent = `${name} (${code})`;
-    $('#wfo-products').innerHTML = '<p class="hint">Click “Ping” to load latest products.</p>';
+    $('#wfo-products').innerHTML = '<p class="hint">Loading office alerts & products…</p>';
+    // Auto-load alerts + products for this office
+    pingWfo();
   }
 
   async function pingWfo() {
     if (!state.selectedWfo) return;
     const code = state.selectedWfo.code;
     $('#wfo-products').innerHTML = '<p class="hint">Loading…</p>';
+    let html = '';
+
+    // 1) Active alerts for this office (primary UX)
+    try {
+      const alerts = await fetchJson(`https://api.weather.gov/alerts/active?office=${code}`);
+      const feats = alerts.features || [];
+      html += `<div class="wfo-section-title">ACTIVE ALERTS (${feats.length})</div>`;
+      if (!feats.length) {
+        html += '<p class="hint">No active alerts for this office.</p>';
+      } else {
+        feats.forEach((f, idx) => {
+          const p = f.properties || {};
+          const sev = p.severity || 'Unknown';
+          const color = severityColor(sev);
+          const id = f.id || `alert-${idx}`;
+          html += `<div class="alert-card" data-alert-id="${escapeHtml(id)}" style="border-left:3px solid ${color}">
+            <div class="alert-card-head">
+              <strong>${escapeHtml(p.event || p.headline || 'Alert')}</strong>
+              ${severityBadge(sev)}
+            </div>
+            <div class="alert-card-meta">${escapeHtml((p.areaDesc || '').slice(0, 80))}</div>
+            <div class="alert-card-meta">${p.onset ? p.onset.slice(0,16) : ''} → ${p.expires ? p.expires.slice(0,16) : ''}Z</div>
+          </div>`;
+        });
+      }
+      // Store for floating window
+      state._wfoAlerts = feats;
+    } catch (e) {
+      html += '<p class="hint">Could not load alerts for office.</p>';
+      state._wfoAlerts = [];
+    }
+
+    // 2) Office info + recent products
     try {
       const office = await fetchJson(CFG.NWS_OFFICE(code));
-      let html = `<div class="prod"><strong>Office</strong><br>${escapeHtml(office.name||code)}<br>
-        <a href="${office['@id']||'https://www.weather.gov/'+code.toLowerCase()}" target="_blank" rel="noopener">NWS page →</a></div>`;
-      try {
-        const prods = await fetchJson(CFG.NWS_PRODUCTS(code));
-        const list = (prods['@graph'] || prods.products || []).slice(0, 12);
-        if (list.length) {
-          html += '<div style="margin-top:8px;font-size:10px;color:var(--text-dim)">RECENT PRODUCTS</div>';
-          list.forEach(p => {
-            html += `<div class="prod"><a href="${p['@id']||p.url||'#'}" target="_blank" rel="noopener">${escapeHtml(p.productName||p.id||'Product')}</a>
-              <div style="color:var(--text-dim);font-size:10px">${p.issuanceTime?p.issuanceTime.slice(0,16):''}Z</div></div>`;
-          });
-        }
-      } catch (_) { html += '<p class="hint">No recent AFD products.</p>'; }
-      // Also pull active alerts for this office area if possible
-      try {
-        const alerts = await fetchJson(`https://api.weather.gov/alerts/active?office=${code}`);
-        const feats = alerts.features || [];
-        if (feats.length) {
-          html += `<div style="margin-top:8px;font-size:10px;color:var(--text-dim)">ACTIVE ALERTS (${feats.length})</div>`;
-          feats.slice(0,8).forEach(f => {
-            const p = f.properties || {};
-            html += `<div class="prod">${escapeHtml(p.event||'Alert')}<div style="color:var(--text-dim);font-size:10px">${escapeHtml(p.severity||'')} · ${(p.areaDesc||'').slice(0,40)}</div></div>`;
-          });
-        }
-      } catch (_) {}
-      $('#wfo-products').innerHTML = html;
-    } catch (e) {
-      $('#wfo-products').innerHTML = '<p class="hint">Could not reach NWS office endpoint.</p>';
-    }
+      html += `<div class="wfo-section-title" style="margin-top:12px">OFFICE</div>
+        <div class="prod"><strong>${escapeHtml(office.name || code)}</strong><br>
+        <a href="${office['@id'] || 'https://www.weather.gov/' + code.toLowerCase()}" target="_blank" rel="noopener">NWS page →</a></div>`;
+    } catch (_) {}
+
+    try {
+      const prods = await fetchJson(CFG.NWS_PRODUCTS(code));
+      const list = (prods['@graph'] || prods.products || []).slice(0, 8);
+      if (list.length) {
+        html += '<div class="wfo-section-title" style="margin-top:10px">RECENT PRODUCTS</div>';
+        list.forEach(p => {
+          html += `<div class="prod"><a href="${p['@id'] || p.url || '#'}" target="_blank" rel="noopener">${escapeHtml(p.productName || p.id || 'Product')}</a>
+            <div style="color:var(--text-dim);font-size:10px">${p.issuanceTime ? p.issuanceTime.slice(0,16) : ''}Z</div></div>`;
+        });
+      }
+    } catch (_) {}
+
+    $('#wfo-products').innerHTML = html;
+
+    // Click handlers for alert cards → floating detail window
+    $('#wfo-products').querySelectorAll('.alert-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const id = card.dataset.alertId;
+        const f = (state._wfoAlerts || []).find(x => (x.id || '') === id);
+        if (f) openAlertFloat(f);
+      });
+    });
+  }
+
+  function openAlertFloat(f) {
+    const p = f.properties || {};
+    const sev = p.severity || 'Unknown';
+    const color = severityColor(sev);
+    // Remove existing float
+    const prev = document.getElementById('alert-float');
+    if (prev) prev.remove();
+
+    const el = document.createElement('div');
+    el.id = 'alert-float';
+    el.className = 'alert-float';
+    el.innerHTML = `
+      <div class="alert-float-head" style="border-top:3px solid ${color}">
+        <div>
+          <strong>${escapeHtml(p.event || 'Alert')}</strong>
+          ${severityBadge(sev)}
+        </div>
+        <button class="icon-btn" id="alert-float-close">✕</button>
+      </div>
+      <div class="alert-float-body">
+        <div class="alert-float-headline">${escapeHtml(p.headline || '')}</div>
+        <div class="meta-row" style="margin:8px 0">
+          <span class="pill">${escapeHtml(p.urgency || '')}</span>
+          <span class="pill">${escapeHtml(p.certainty || '')}</span>
+          <span class="pill">${escapeHtml(p.response || '')}</span>
+        </div>
+        <div class="alert-float-area"><strong>Area:</strong> ${escapeHtml(p.areaDesc || '—')}</div>
+        <div class="alert-float-time">Onset: ${p.onset ? p.onset.slice(0,16)+'Z' : '—'} · Expires: ${p.expires ? p.expires.slice(0,16)+'Z' : '—'}</div>
+        <div class="alert-float-desc">${escapeHtml((p.description || '').slice(0, 1200))}${(p.description||'').length > 1200 ? '…' : ''}</div>
+        ${p.instruction ? `<div class="alert-float-instr"><strong>Instructions:</strong> ${escapeHtml(p.instruction.slice(0,600))}</div>` : ''}
+        <div style="margin-top:10px">
+          <button class="btn" id="alert-float-zoom">Zoom map to alert</button>
+          ${p['@id'] ? `<a class="btn ghost" href="${p['@id']}" target="_blank" rel="noopener" style="margin-left:6px">Official →</a>` : ''}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(el);
+    $('#alert-float-close').onclick = () => el.remove();
+    $('#alert-float-zoom').onclick = () => {
+      if (f.geometry) {
+        try {
+          const layer = L.geoJSON(f);
+          state.map.fitBounds(layer.getBounds(), { padding: [40,40], maxZoom: 8 });
+        } catch(_) {}
+      }
+      el.remove();
+    };
   }
 
   // ── CESIUM 3D ──
@@ -1083,6 +1167,22 @@
     });
 
     $('#wfo-search').addEventListener('input', e => renderWfoList(e.target.value));
+    $('#btn-wfo-reset')?.addEventListener('click', () => {
+      $('#wfo-search').value = '';
+      $('#wfo-detail').classList.add('hidden');
+      $('#wfo-list').classList.remove('hidden');
+      state.selectedWfo = null;
+      renderWfoList('');
+      toast('WFO list reset');
+    });
+    $('#btn-nws-reset')?.addEventListener('click', () => {
+      state.nwsSearch = '';
+      state.nwsSev = 'all';
+      $('#nws-alert-search').value = '';
+      $$('#nws-sev-seg button').forEach(b => b.classList.toggle('active', b.dataset.sev === 'all'));
+      loadNwsAlerts();
+      toast('NWS alerts reloaded');
+    });
     $('#wfo-back').addEventListener('click', () => {
       $('#wfo-detail').classList.add('hidden');
       $('#wfo-list').classList.remove('hidden');

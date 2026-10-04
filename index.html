@@ -63,7 +63,7 @@
           <option value="300">5 min</option>
         </select>
         <button class="icon-btn" id="btn-refresh" title="Soft refresh">⟳</button>
-        <button class="icon-btn" id="btn-alerts" title="Three-tone audio alerts" aria-pressed="true">🔔</button>
+        <button class="icon-btn" id="btn-alerts" title="Alert tones ON/OFF" aria-pressed="true">ALERT</button>
         <button class="icon-btn" id="btn-fullscreen" title="Fullscreen">⛶</button>
       </div>
     </header>
@@ -221,6 +221,7 @@
           <div class="tab-panel active" id="panel-stations">
             <div class="panel-section" style="border:none;padding-bottom:6px">
               <input type="search" id="wfo-search" class="search-box" placeholder="Filter by state or code…" />
+              <button class="btn ghost full" id="btn-wfo-reset" style="margin-top:6px;font-size:11px">Reset WFO list</button>
             </div>
             <div id="wfo-list" class="wfo-list"></div>
             <div id="wfo-detail" class="wfo-detail hidden">
@@ -242,6 +243,7 @@
                 <button data-sev="Severe">Severe</button>
                 <button data-sev="Moderate">Mod</button>
               </div>
+              <button class="btn ghost full" id="btn-nws-reset" style="margin-top:6px;font-size:11px">Reset filters & reload</button>
             </div>
             <div id="nws-alert-list" class="event-list"></div>
           </div>
