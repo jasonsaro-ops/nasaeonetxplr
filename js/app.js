@@ -424,72 +424,112 @@
     $('#detail-empty').classList.add('hidden');
     const box = $('#detail-content');
     box.classList.remove('hidden');
-    box.innerHTML = '<p class="hint">Loading full metadata…</p>';
+    box.innerHTML = '<p class="hint">Loading full event…</p>';
 
-    // Fetch single-event endpoint for complete data + related layers
     let full = ev;
     try {
       full = await fetchJson(`${CFG.EONET}/events/${ev.id}`);
     } catch (_) {}
 
-    const cats = (full.categories || []).map((c) => `<span class="pill">${escapeHtml(c.title)}</span>`).join('');
-    const sources = (full.sources || []).map((s) =>
-      `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.id)}</a></li>`).join('');
-    const geoms = (full.geometry || []).map((g, i) => {
-      let coords = '';
-      if (g.type === 'Point' && g.coordinates) coords = `${g.coordinates[1].toFixed(3)}, ${g.coordinates[0].toFixed(3)}`;
-      else if (g.type === 'Polygon') coords = 'Polygon';
-      return `<li><strong>#${i + 1}</strong> ${g.date ? g.date.slice(0, 16) : '—'}Z · ${g.type}${g.magnitudeValue != null ? ` · mag ${g.magnitudeValue} ${g.magnitudeUnit || ''}` : ''} · ${coords}</li>`;
-    }).join('');
+    const catTitle = (full.categories && full.categories[0] && full.categories[0].title) || 'Event';
+    const color = catColor(catTitle);
+    const cats = (full.categories || []).map((c) =>
+      `<span class="pill" style="border-color:${catColor(c.title)}55;color:${catColor(c.title)}">${escapeHtml(c.title)}</span>`).join('');
 
-    // Related EONET layers for category
-    let layersHtml = '<p class="hint">No related layers</p>';
+    const sources = (full.sources || []).map((s) =>
+      `<a class="source-chip" href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.id)}</a>`).join(' ');
+
+    // Geometry cards
+    const geoms = full.geometry || [];
+    let geomHtml = '';
+    if (geoms.length) {
+      geomHtml = geoms.map((g, i) => {
+        let loc = '—';
+        if (g.type === 'Point' && g.coordinates) {
+          loc = `${Number(g.coordinates[1]).toFixed(3)}°, ${Number(g.coordinates[0]).toFixed(3)}°`;
+        } else if (g.type === 'Polygon') {
+          loc = 'Polygon area';
+        }
+        const mag = g.magnitudeValue != null
+          ? `<div class="geom-mag">${g.magnitudeValue} <span>${escapeHtml(g.magnitudeUnit || '')}</span></div>`
+          : '';
+        return `<div class="geom-card">
+          <div class="geom-idx">#${i + 1}</div>
+          <div class="geom-body">
+            <div class="geom-date">${g.date ? g.date.slice(0, 16).replace('T', ' ') : '—'}Z</div>
+            <div class="geom-type">${escapeHtml(g.type || '')} · ${loc}</div>
+            ${mag}
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      geomHtml = '<p class="hint">No geometry</p>';
+    }
+
+    // Related layers
+    let layersHtml = '';
     try {
       const catId = full.categories?.[0]?.id;
       if (catId) {
         const layerData = await fetchJson(`${CFG.EONET}/layers/${catId}`);
         const layers = layerData.categories?.[0]?.layers || [];
         if (layers.length) {
-          layersHtml = '<ul class="source-list">' + layers.slice(0, 12).map((l) =>
-            `<li><strong>${escapeHtml(l.name)}</strong><br><span style="color:var(--text-dim);font-size:10px">${escapeHtml(l.serviceTypeId || '')} · ${escapeHtml((l.serviceUrl || '').slice(0, 60))}…</span></li>`
-          ).join('') + '</ul>';
+          layersHtml = `<div class="layer-grid">` + layers.slice(0, 10).map((l) =>
+            `<div class="layer-card">
+              <strong>${escapeHtml(l.name)}</strong>
+              <span>${escapeHtml(l.serviceTypeId || 'imagery')}</span>
+            </div>`
+          ).join('') + `</div>`;
         }
       }
     } catch (_) {}
+    if (!layersHtml) layersHtml = '<p class="hint">No linked imagery layers for this category</p>';
 
-    const mag = full.geometry?.find((g) => g.magnitudeValue != null);
+    const statusOpen = !full.closed;
+    const lastGeom = geoms[geoms.length - 1];
+    const canZoom = lastGeom && lastGeom.type === 'Point' && lastGeom.coordinates;
 
     box.innerHTML = `
-      <h3>${escapeHtml(full.title)}</h3>
-      <div class="meta-row">${cats}
-        ${full.closed ? `<span class="pill">CLOSED ${escapeHtml(String(full.closed).slice(0, 10))}</span>` : '<span class="pill">OPEN</span>'}
-        ${mag ? `<span class="pill">Mag ${mag.magnitudeValue} ${mag.magnitudeUnit || ''}</span>` : ''}
+      <div class="detail-hero" style="border-left:4px solid ${color}">
+        <div class="detail-cat" style="color:${color}">${escapeHtml(catTitle)}</div>
+        <h3>${escapeHtml(full.title)}</h3>
+        <div class="meta-row" style="margin-top:8px">
+          <span class="pill" style="background:${statusOpen ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.15)'};color:${statusOpen ? '#4ade80' : '#94a3b8'}">${statusOpen ? 'OPEN' : 'CLOSED'}</span>
+          ${cats}
+        </div>
       </div>
-      ${full.description ? `<p style="margin-bottom:12px;color:var(--text-mid);line-height:1.45">${escapeHtml(full.description)}</p>` : ''}
+
+      ${full.description ? `<div class="detail-desc">${escapeHtml(full.description)}</div>` : ''}
 
       <div class="section">
         <h4>Sources</h4>
-        <ul class="source-list">${sources || '<li>—</li>'}</ul>
+        <div class="source-row">${sources || '<span class="hint">—</span>'}</div>
       </div>
 
       <div class="section">
-        <h4>Geometry timeline (${(full.geometry || []).length})</h4>
-        <ul class="source-list" style="font-size:11px">${geoms || '<li>—</li>'}</ul>
+        <h4>Geometry timeline · ${geoms.length} observation${geoms.length === 1 ? '' : 's'}</h4>
+        <div class="geom-list">${geomHtml}</div>
+        ${canZoom ? `<button type="button" class="btn full" id="detail-zoom-btn" style="margin-top:8px">Zoom map to latest position</button>` : ''}
       </div>
 
       <div class="section">
-        <h4>Related NASA imagery layers (EONET)</h4>
+        <h4>Related NASA imagery layers</h4>
         ${layersHtml}
       </div>
 
-      <div class="section">
-        <h4>API</h4>
-        <ul class="source-list">
-          <li><a href="${escapeHtml(full.link || CFG.EONET + '/events/' + full.id)}" target="_blank" rel="noopener">EONET event JSON →</a></li>
-          <li><a href="https://worldview.earthdata.nasa.gov/" target="_blank" rel="noopener">Open NASA Worldview →</a></li>
-        </ul>
+      <div class="section detail-actions">
+        <a class="btn primary" href="${escapeHtml(full.link || CFG.EONET + '/events/' + full.id)}" target="_blank" rel="noopener">EONET record →</a>
+        <a class="btn ghost" href="https://worldview.earthdata.nasa.gov/" target="_blank" rel="noopener">NASA Worldview →</a>
       </div>
     `;
+
+    const zoomBtn = document.getElementById('detail-zoom-btn');
+    if (zoomBtn && canZoom) {
+      zoomBtn.onclick = () => {
+        const [lon, lat] = lastGeom.coordinates;
+        state.map.flyTo([lat, lon], Math.max(state.map.getZoom(), 7), { duration: 0.8 });
+      };
+    }
   }
 
   function renderEonetLayer() {
@@ -511,17 +551,25 @@
       const last = geoms[geoms.length - 1];
       if (last.type === 'Point' && last.coordinates) {
         const [lon, lat] = last.coordinates;
-        const marker = L.marker([lat, lon], { icon: makeIcon(color) })
-          .bindPopup(`<div class="popup-title">${escapeHtml(ev.title)}</div>
-            <div class="popup-meta">${escapeHtml((ev.categories?.[0] || {}).title || '')} · ${last.date ? last.date.slice(0, 10) : ''}</div>
-            <div style="font-size:10px;color:var(--cyan);margin-top:4px">Click for full metadata</div>`)
-          .on('click', () => selectEvent(ev.id));
+        const eid = ev.id;
+        const marker = L.marker([lat, lon], { icon: makeIcon(color) });
+        marker.bindPopup(
+          `<div class="popup-title">${escapeHtml(ev.title)}</div>
+           <div class="popup-meta">${escapeHtml((ev.categories?.[0] || {}).title || '')} · ${last.date ? last.date.slice(0, 10) : ''}</div>
+           <button type="button" class="btn primary" data-open-event="${escapeHtml(eid)}" style="margin-top:8px;width:100%;font-size:11px;padding:6px">View full event →</button>`
+        );
+        marker.on('click', () => { selectEvent(eid); });
+        marker.on('popupopen', () => {
+          const btn = document.querySelector(`button[data-open-event="${CSS.escape(eid)}"]`);
+          if (btn) btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); selectEvent(eid); };
+        });
         marker.addTo(state.layersGroup.eonet);
-        state.markers.set(ev.id, marker);
+        state.markers.set(eid, marker);
       } else if (last.type === 'Polygon' && last.coordinates?.[0]) {
         const latlngs = last.coordinates[0].map((c) => [c[1], c[0]]);
+        const eid = ev.id;
         L.polygon(latlngs, { color, weight: 1.5, fillOpacity: 0.15 })
-          .on('click', () => selectEvent(ev.id))
+          .on('click', () => selectEvent(eid))
           .addTo(state.layersGroup.eonet);
       }
     });
