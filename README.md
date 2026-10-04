@@ -37,7 +37,7 @@ python -m http.server 8080
 | NWS alerts | api.weather.gov/alerts/active |
 | NWS offices | api.weather.gov/offices/{code} |
 | NEXRAD | mesonet.agron.iastate.edu WMS |
-| USGS quakes | earthquake.usgs.gov GeoJSON |
+| USGS quakes | Official feeds that power earthquake.usgs.gov/earthquakes/map (2.5_day, all_day, significant_week, etc.) |
 | GDACS | gdacs.org API |
 | ISS position | api.wheretheiss.at |
 | People in space | api.open-notify.org/astros.json |

@@ -100,7 +100,18 @@
             <label class="layer-row"><input type="checkbox" id="layer-eonet" checked /><span class="layer-swatch eonet"></span>EONET Events<span class="layer-count" id="count-eonet">0</span></label>
             <label class="layer-row"><input type="checkbox" id="layer-nws" checked /><span class="layer-swatch nws"></span>NWS Active Alerts<span class="layer-count" id="count-nws">0</span></label>
             <label class="layer-row"><input type="checkbox" id="layer-nexrad" /><span class="layer-swatch nexrad"></span>NEXRAD Radar</label>
-            <label class="layer-row"><input type="checkbox" id="layer-usgs" checked /><span class="layer-swatch usgs"></span>USGS Quakes (24h)<span class="layer-count" id="count-usgs">0</span></label>
+            <label class="layer-row"><input type="checkbox" id="layer-usgs" checked /><span class="layer-swatch usgs"></span>USGS Earthquakes<span class="layer-count" id="count-usgs">0</span></label>
+            <div class="field-row" style="margin:4px 0 6px 24px">
+              <label style="font-size:10px">USGS feed</label>
+              <select id="usgs-feed" class="ctrl-select" style="font-size:10px;max-width:140px">
+                <option value="2.5_day" selected>M2.5+ 24h</option>
+                <option value="1.0_day">M1.0+ 24h</option>
+                <option value="all_day">All 24h</option>
+                <option value="2.5_week">M2.5+ 7d</option>
+                <option value="4.5_week">M4.5+ 7d</option>
+                <option value="significant_week">Significant 7d</option>
+              </select>
+            </div>
             <label class="layer-row"><input type="checkbox" id="layer-gdacs" /><span class="layer-swatch gdacs"></span>GDACS Hazards<span class="layer-count" id="count-gdacs">0</span></label>
             <label class="layer-row"><input type="checkbox" id="layer-iss" checked /><span class="layer-swatch iss"></span>ISS Live<span class="layer-count" id="count-iss">1</span></label>
             <label class="layer-row"><input type="checkbox" id="layer-iss-trail" checked /><span class="layer-swatch trail"></span>ISS Ground Track</label>

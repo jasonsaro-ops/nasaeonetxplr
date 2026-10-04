@@ -8,7 +8,16 @@
 
   const CFG = {
     EONET: 'https://eonet.gsfc.nasa.gov/api/v3',
-    USGS_DAY: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson',
+    // USGS feeds that power https://earthquake.usgs.gov/earthquakes/map/
+    USGS_FEEDS: {
+      '2.5_day': 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson',
+      'all_day': 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',
+      '1.0_day': 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/1.0_day.geojson',
+      'significant_week': 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_week.geojson',
+      '4.5_week': 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson',
+      '2.5_week': 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson',
+    },
+    USGS_DEFAULT: '2.5_day',
     GDACS: 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP',
     ISS: 'https://api.wheretheiss.at/v1/satellites/25544',
     ASTROS: 'http://api.open-notify.org/astros.json',
@@ -36,7 +45,7 @@
     events: [], filtered: [], categories: new Map(), selectedId: null,
     status: 'open', days: 30, search: '', enabledCats: new Set(),
     layers: { eonet:true, nws:true, nexrad:false, usgs:true, gdacs:false, iss:true, issTrail:true },
-    usgs: { features: [] }, gdacs: { features: [] },
+    usgs: { features: [], feed: '2.5_day' }, gdacs: { features: [] },
     nwsAlerts: [], nwsFiltered: [], nwsSev: 'all', nwsSearch: '',
     iss: { lat:null, lon:null, alt:null, vel:null, vis:null, footprint:null },
     crew: [], trail: [],
@@ -355,11 +364,13 @@
   async function loadUsgs() {
     if (!state.layers.usgs) return;
     try {
-      const data = await fetchJson(CFG.USGS_DAY);
+      const feedKey = state.usgs.feed || CFG.USGS_DEFAULT;
+      const url = CFG.USGS_FEEDS[feedKey] || CFG.USGS_FEEDS[CFG.USGS_DEFAULT];
+      const data = await fetchJson(url);
       state.usgs.features = data.features || [];
       renderUsgs();
       $('#count-usgs').textContent = state.usgs.features.length;
-    } catch (e) { console.warn(e); }
+    } catch (e) { console.warn('USGS', e); }
   }
 
   async function loadGdacs() {
@@ -453,7 +464,7 @@
       }));
     }
     if (state.layers.nws) rows.push({label:'NWS Alert', color:'#eab308'});
-    if (state.layers.usgs) rows.push({label:'USGS Quake ≥2.5', color:'#f97316'});
+    if (state.layers.usgs) rows.push({label:'USGS Earthquake', color:'#f97316'});
     if (state.layers.gdacs) rows.push({label:'GDACS', color:'#ef4444'});
     if (state.layers.iss) rows.push({label:'ISS', color:'#06b6d4'});
     if (state.nexradLayer) rows.push({label:'NEXRAD', color:'#22c55e'});
@@ -1015,6 +1026,11 @@
       });
     });
 
+    $('#usgs-feed')?.addEventListener('change', e => {
+      state.usgs.feed = e.target.value;
+      if (state.layers.usgs) loadUsgs();
+    });
+
     $('#layer-nexrad').addEventListener('change', e => {
       setNexrad(e.target.checked);
       updateStats(); updateLegend();
@@ -1041,7 +1057,8 @@
       loadEvents(); loadUsgs(); loadNwsAlerts();
       if (state.layers.gdacs) loadGdacs();
       loadIss();
-      toast('Soft refresh complete');
+      if ($('#layer-nexrad')?.checked) setNexrad(true);
+      toast('Full soft refresh complete');
     });
     $('#btn-alerts').addEventListener('click', () => {
       state.alertsEnabled = !state.alertsEnabled;
@@ -1101,10 +1118,16 @@
     if (state.autoTimer) clearInterval(state.autoTimer);
     if (state.autoRefreshMs > 0) {
       state.autoTimer = setInterval(() => {
+        // Full site refresh every interval (default 2 min)
         loadEvents();
         loadUsgs();
         loadNwsAlerts();
         if (state.layers.gdacs) loadGdacs();
+        loadIss();
+        // Keep NEXRAD tiles fresh by re-adding if enabled
+        if (state.layers.nexrad || $('#layer-nexrad')?.checked) {
+          setNexrad(true);
+        }
       }, state.autoRefreshMs);
     }
   }
